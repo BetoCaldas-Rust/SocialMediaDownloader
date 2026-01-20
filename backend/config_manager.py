@@ -14,8 +14,12 @@ class ConfigManager:
     
     def _get_default_download_path(self) -> str:
         """Retorna o caminho padrão de downloads do sistema"""
+        # Verifica variável de ambiente (Docker)
+        env_path = os.environ.get("DOWNLOAD_PATH")
+        if env_path:
+            downloads = Path(env_path)
         # Windows
-        if os.name == 'nt':
+        elif os.name == 'nt':
             downloads = Path.home() / "Downloads" / "SocialMediaDownloader"
         # Linux/Mac
         else:
@@ -72,6 +76,16 @@ class ConfigManager:
         custom_path.mkdir(parents=True, exist_ok=True)
         
         return str(custom_path)
+    
+    def get_relative_path(self, full_path: str) -> str:
+        """Retorna o caminho relativo à base de downloads"""
+        try:
+            full = Path(full_path)
+            base = Path(self.config.default_path)
+            return str(full.relative_to(base))
+        except ValueError:
+            # Se não for subcaminho, retorna o nome do arquivo
+            return Path(full_path).name
     
     def update_config(self, default_path: Optional[str] = None, 
                      platform_paths: Optional[Dict[str, str]] = None,

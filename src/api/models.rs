@@ -24,6 +24,7 @@ pub struct DownloadStatus {
     pub filename: Option<String>,
     pub platform: Option<String>,
     pub error: Option<String>,
+    pub relative_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

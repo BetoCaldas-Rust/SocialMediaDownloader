@@ -48,14 +48,18 @@ class DownloadManager:
             # Nome do arquivo
             filename = d.get('filename')
             if filename:
-                status.filename = Path(filename).name
+                path_obj = Path(filename)
+                status.filename = path_obj.name
+                status.relative_path = self.config_manager.get_relative_path(str(path_obj))
         
         elif d['status'] == 'finished':
             status.status = DownloadStatus.PROCESSING
             status.progress = 100.0
             filename = d.get('filename')
             if filename:
-                status.filename = Path(filename).name
+                path_obj = Path(filename)
+                status.filename = path_obj.name
+                status.relative_path = self.config_manager.get_relative_path(str(path_obj))
     
     async def download_video(self, url: str, custom_path: Optional[str] = None) -> str:
         """

@@ -43,6 +43,7 @@ class DownloadStatusResponse(BaseModel):
     filename: Optional[str] = None
     platform: Optional[str] = None
     error: Optional[str] = None
+    relative_path: Optional[str] = None
 
 
 class Config(BaseModel):

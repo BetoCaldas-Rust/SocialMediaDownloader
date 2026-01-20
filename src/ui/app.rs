@@ -1,7 +1,7 @@
 use crate::api::client::ApiClient;
 use crate::api::models::DownloadStatus;
 use crate::ui::theme::*;
-use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Ui, Vec2};
+use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Rounding, Ui, Vec2};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -54,12 +54,23 @@ impl DownloaderApp {
         // Cria API client
         let api_client = Arc::new(ApiClient::new("http://localhost:8000".to_string()));
 
-        // Testa conexão com backend
+        // Testa conexão e busca config
         let client_clone = api_client.clone();
         let runtime_clone = runtime.clone();
-        let backend_connected = runtime_clone.block_on(async move {
-            client_clone.health_check().await.unwrap_or(false)
+        let (backend_connected, initial_config) = runtime_clone.block_on(async move {
+            let connected = client_clone.health_check().await.unwrap_or(false);
+            let config = if connected {
+                client_clone.get_config().await.ok()
+            } else {
+                None
+            };
+            (connected, config)
         });
+
+        let mut settings = SettingsWindow::default();
+        if let Some(config) = initial_config {
+            settings.download_path = config.default_path;
+        }
 
         Self {
             api_client,
@@ -74,7 +85,7 @@ impl DownloaderApp {
             backend_connected,
             downloads: Arc::new(Mutex::new(HashMap::new())),
             active_download_id: None,
-            settings: SettingsWindow::default(),
+            settings,
         }
     }
 
@@ -123,6 +134,32 @@ impl DownloaderApp {
                 }
             }
         });
+    }
+
+    fn open_file_in_explorer(&self, relative_path: &str) {
+        let mut download_path = if self.settings.download_path.is_empty() {
+            "downloads".to_string()
+        } else {
+            self.settings.download_path.clone()
+        };
+
+        // Se estiver no Docker (/downloads), converte para o path local do host
+        if download_path == "/downloads" {
+            download_path = "downloads".to_string();
+        }
+
+        let full_path = std::path::Path::new(&download_path).join(relative_path);
+        let path_str = full_path.to_string_lossy().to_string();
+
+        #[cfg(target_os = "windows")]
+        {
+            // Garante que usamos barras invertidas no Windows para o explorer
+            let path_win = path_str.replace("/", "\\");
+            let _ = std::process::Command::new("explorer.exe")
+                .arg("/select,")
+                .arg(path_win)
+                .spawn();
+        }
     }
 
     fn render_header(&mut self, ui: &mut Ui) {
@@ -212,7 +249,6 @@ impl DownloaderApp {
                         .color(TEXT_PRIMARY)
                         .size(14.0),
                 );
-
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let status_text = match status.status.as_str() {
                         "completed" => "✅ Completo",
@@ -220,7 +256,21 @@ impl DownloaderApp {
                         "downloading" => "⏳ Baixando",
                         _ => "⏸️ Aguardando",
                     };
+
                     ui.label(RichText::new(status_text).size(12.0).color(TEXT_SECONDARY));
+
+                    if status.status == "completed" {
+                        if let Some(rel_path) = &status.relative_path {
+                            ui.add_space(8.0);
+                            let btn = Button::new(RichText::new("📂 Abrir").size(12.0).color(BG_DARK))
+                                .fill(ACCENT_PRIMARY)
+                                .rounding(Rounding::same(2.0));
+
+                            if ui.add(btn).on_hover_text("Abrir pasta e selecionar arquivo").clicked() {
+                                self.open_file_in_explorer(rel_path);
+                            }
+                        }
+                    }
                 });
             });
 
@@ -261,14 +311,14 @@ impl eframe::App for DownloaderApp {
                     }
                 });
 
-                // Check síncrono rápido (opcional, mas block_on trava a UI)
+                // Check síncrono rápido e busca config
                 let api_client_sync = self.api_client.clone();
-                self.backend_connected = runtime.block_on(async move {
-                    api_client_sync.health_check().await.unwrap_or(false)
-                });
-
-                if self.backend_connected {
+                if let Ok(config) = runtime.block_on(async move { api_client_sync.get_config().await }) {
+                    self.backend_connected = true;
+                    self.settings.download_path = config.default_path;
                     self.status_message = "✅ Conectado ao backend".to_string();
+                } else {
+                    self.backend_connected = false;
                 }
             }
         }
