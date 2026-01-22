@@ -1,8 +1,9 @@
 use crate::api::client::ApiClient;
 use crate::api::models::DownloadStatus;
 use crate::ui::theme::*;
-use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Rounding, Ui, Vec2};
+use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Rounding, ScrollArea, Ui, Vec2};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct SettingsWindow {
@@ -29,7 +30,7 @@ pub struct DownloaderApp {
     // UI State
     url_input: String,
     status_message: String,
-    is_downloading: bool,
+    is_downloading: Arc<AtomicBool>,
     backend_connected: bool,
 
     // Downloads
@@ -81,7 +82,7 @@ impl DownloaderApp {
             } else {
                 "⏳ Tentando conectar ao backend...".to_string()
             },
-            is_downloading: false,
+            is_downloading: Arc::new(AtomicBool::new(false)),
             backend_connected,
             downloads: Arc::new(Mutex::new(HashMap::new())),
             active_download_id: None,
@@ -99,10 +100,11 @@ impl DownloaderApp {
         let api_client = self.api_client.clone();
         let downloads = self.downloads.clone();
 
-        self.is_downloading = true;
+        self.is_downloading.store(true, Ordering::SeqCst);
         self.status_message = "⏳ Iniciando download...".to_string();
 
         let runtime = self.runtime.clone();
+        let is_downloading = self.is_downloading.clone();
         runtime.spawn(async move {
             match api_client.start_download(url.clone(), None).await {
                 Ok(response) => {
@@ -128,11 +130,12 @@ impl DownloaderApp {
                             Err(_) => break,
                         }
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("Erro ao iniciar download: {}", e);
                 }
             }
+            is_downloading.store(false, Ordering::SeqCst);
         });
     }
 
@@ -200,7 +203,8 @@ impl DownloaderApp {
     fn render_download_button(&mut self, ui: &mut Ui) {
         ui.add_space(10.0);
 
-        let button_text = if self.is_downloading {
+        let is_downloading = self.is_downloading.load(Ordering::SeqCst);
+        let button_text = if is_downloading {
             "⏳ Baixando..."
         } else {
             "⬇️ Download"
@@ -210,7 +214,7 @@ impl DownloaderApp {
             .fill(ACCENT_PRIMARY)
             .min_size(Vec2::new(ui.available_width(), 45.0));
 
-        if ui.add_enabled(!self.is_downloading && self.backend_connected, button).clicked() {
+        if ui.add_enabled(!is_downloading && self.backend_connected, button).clicked() {
             self.start_download();
         }
     }
@@ -228,15 +232,24 @@ impl DownloaderApp {
         ui.label(RichText::new("Downloads").size(18.0).color(ACCENT_PRIMARY));
         ui.add_space(10.0);
 
-        let downloads = self.downloads.lock().unwrap();
-        
-        if downloads.is_empty() {
-            ui.label(RichText::new("Nenhum download ainda").color(TEXT_DISABLED).size(14.0));
-        } else {
-            for (id, status) in downloads.iter() {
-                self.render_download_item(ui, id, status);
-            }
-        }
+        ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .max_height(f32::INFINITY)
+            .show(ui, |ui| {
+                let downloads = self.downloads.lock().unwrap();
+
+                if downloads.is_empty() {
+                    ui.label(
+                        RichText::new("Nenhum download ainda")
+                            .color(TEXT_DISABLED)
+                            .size(14.0),
+                    );
+                } else {
+                    for (id, status) in downloads.iter() {
+                        self.render_download_item(ui, id, status);
+                    }
+                }
+            });
     }
 
     fn render_download_item(&self, ui: &mut Ui, _id: &str, status: &DownloadStatus) {
