@@ -12,6 +12,14 @@ venv/
 .Python
 pip-log.txt
 pip-delete-this-directory.txt
+.uv/
+uv.lock
+
+# PyInstaller
+build/
+dist/
+*.spec
+social_media_downloader_backend.egg-info/
 
 # App data
 config.json
@@ -29,5 +37,7 @@ downloads/
 Thumbs.db
 desktop.ini
 
-# Logs
+# Logs and Temp
 *.log
+*.txt
+test_pyi.py

@@ -1,6 +1,6 @@
 [package]
 name = "social-media-downloader"
-version = "0.1.0"
+version = "1.0.4"
 edition = "2021"
 
 [dependencies]
@@ -17,3 +17,20 @@ rfd = "0.14"
 [[bin]]
 name = "social-media-downloader"
 path = "src/main.rs"
+
+[package.metadata.packager]
+product-name = "Social Media Downloader"
+identifier = "com.betocaldas.smd"
+version = "1.0.4"
+authors = ["Beto Caldas"]
+publisher = "Beto Caldas"
+description = "Baixe vídeos de diversas redes sociais."
+icons = ["icons/icon.png"]
+out-dir = "dist"
+resources = ["backend/dist/smd-backend.exe"]
+
+[[package.metadata.packager.binaries]]
+path = "social-media-downloader.exe"
+main = true
+[build-dependencies]
+winres = "0.1"

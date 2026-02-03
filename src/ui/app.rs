@@ -3,6 +3,9 @@ use crate::api::models::DownloadStatus;
 use crate::ui::theme::*;
 use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Rounding, ScrollArea, Ui, Vec2};
 use std::collections::HashMap;
+use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -58,15 +61,74 @@ impl DownloaderApp {
         // Testa conexão e busca config
         let client_clone = api_client.clone();
         let runtime_clone = runtime.clone();
-        let (backend_connected, initial_config) = runtime_clone.block_on(async move {
-            let connected = client_clone.health_check().await.unwrap_or(false);
-            let config = if connected {
-                client_clone.get_config().await.ok()
-            } else {
-                None
-            };
-            (connected, config)
+        let backend_connected = runtime_clone.block_on(async move {
+            if client_clone.health_check().await.unwrap_or(false) {
+                return true;
+            }
+            
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+            
+            if let Some(dir) = exe_dir {
+                println!("--- INSPEÇÃO DE DIRETÓRIO (v1.0.3) ---");
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        if let Ok(name) = entry.file_name().into_string() {
+                            println!("  📄 {}", name);
+                        }
+                    }
+                }
+                println!("------------------------------------");
+
+                let backend_exe = dir.join("smd-backend.exe");
+                
+                if backend_exe.exists() {
+                    println!("✅ Backend encontrado. Abrindo em nova janela...");
+                    
+                    let mut cmd = Command::new("cmd");
+                    #[cfg(target_os = "windows")]
+                    {
+                        // Usamos args individuais. O Rust cuida das aspas automaticamente se houver espaços.
+                        // "start" <titulo> <comando>...
+                        cmd.arg("/C")
+                           .arg("start")
+                           .arg("SMD Backend")
+                           .arg("cmd")
+                           .arg("/K")
+                           .arg(&backend_exe);
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        cmd = Command::new(&backend_exe);
+                    }
+                    
+                    cmd.current_dir(&dir);
+                    let _ = cmd.spawn();
+                    
+                    for i in 1..=15 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                        if client_clone.health_check().await.unwrap_or(false) {
+                            println!("✅ Conectado ao backend (v1.0.3)!");
+                            return true;
+                        }
+                        println!("⏳ Tentativa {}/15: Aguardando resposta do servidor...", i);
+                    }
+                } else {
+                    println!("❌ Erro Fatal: smd-backend.exe não existe em {:?}", dir);
+                }
+            }
+            false
         });
+
+        // Busca config se conectado
+        let client_clone = api_client.clone();
+        let runtime_clone = runtime.clone();
+        let initial_config = if backend_connected {
+            runtime_clone.block_on(async move { client_clone.get_config().await.ok() })
+        } else {
+            None
+        };
 
         let mut settings = SettingsWindow::default();
         if let Some(config) = initial_config {

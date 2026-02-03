@@ -29,8 +29,9 @@ async def lifespan(app: FastAPI):
     # Startup
     config_manager = ConfigManager()
     download_manager = DownloadManager(config_manager)
-    print("🚀 Backend iniciado!")
-    print(f"📁 Pasta de downloads: {config_manager.get_config().default_path}")
+    print("🚀 Backend iniciado!", flush=True)
+    print(f"📁 Pasta de downloads: {config_manager.get_config().default_path}", flush=True)
+    print("✨ Servidor pronto no http://localhost:8000", flush=True)
     
     yield
     
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Social Media Downloader API",
     description="API para download de vídeos de redes sociais",
-    version="1.0.0",
+    version="1.0.4",
     lifespan=lifespan
 )
 
@@ -63,7 +64,7 @@ async def root():
     return {
         "status": "online",
         "service": "Social Media Downloader API",
-        "version": "1.0.0"
+        "version": "1.0.4"
     }
 
 
@@ -200,8 +201,7 @@ async def detect_platform_from_url(url: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        app,
         host="0.0.0.0",
-        port=8000,
-        reload=True
+        port=8000
     )
