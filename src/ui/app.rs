@@ -71,7 +71,7 @@ impl DownloaderApp {
                 .and_then(|p| p.parent().map(|p| p.to_path_buf()));
             
             if let Some(dir) = exe_dir {
-                println!("--- INSPEÇÃO DE DIRETÓRIO (v1.0.3) ---");
+                println!("--- INSPEÇÃO DE DIRETÓRIO (v{}) ---", std::env!("CARGO_PKG_VERSION"));
                 if let Ok(entries) = std::fs::read_dir(&dir) {
                     for entry in entries.flatten() {
                         if let Ok(name) = entry.file_name().into_string() {
@@ -108,10 +108,7 @@ impl DownloaderApp {
                     
                     for i in 1..=15 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                        if client_clone.health_check().await.unwrap_or(false) {
-                            println!("✅ Conectado ao backend (v1.0.3)!");
-                            return true;
-                        }
+                            println!("✅ Conectado ao backend (v{})!", std::env!("CARGO_PKG_VERSION"));
                         println!("⏳ Tentativa {}/15: Aguardando resposta do servidor...", i);
                     }
                 } else {

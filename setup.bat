@@ -62,7 +62,7 @@ echo Ativando ambiente virtual...
 call venv\Scripts\activate.bat
 
 echo Instalando dependencias Python com UV...
-uv pip install -r requirements.txt
+uv sync
 
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao instalar dependencias Python

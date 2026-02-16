@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "social-media-downloader"
 version = "1.0.4"
 edition = "2021"
@@ -24,7 +24,7 @@ identifier = "com.betocaldas.smd"
 version = "1.0.4"
 authors = ["Beto Caldas"]
 publisher = "Beto Caldas"
-description = "Baixe vídeos de diversas redes sociais."
+description = "Baixe vÃ­deos de diversas redes sociais."
 icons = ["icons/icon.png"]
 out-dir = "dist"
 resources = ["backend/dist/smd-backend.exe"]

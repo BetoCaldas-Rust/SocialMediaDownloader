@@ -108,7 +108,7 @@ uv venv venv
 venv\Scripts\activate
 # Linux/Mac:
 source venv/bin/activate
-uv pip install -r requirements.txt
+uv sync
 
 python main.py
 ```
@@ -161,8 +161,7 @@ SocialMediaDownloader/
 │   ├── downloader.py             # yt-dlp integration
 │   ├── config_manager.py         # Configuration management
 │   ├── validators.py             # URL validation
-│   ├── requirements.txt          # Python dependencies (uv)
-│   ├── pyproject.toml            # Python project config (PEP 621)
+│   ├── pyproject.toml            # Python project config (PEP 621) - Única fonte de verdade para dependências
 │   └── Dockerfile                # Docker container
 │
 ├── src/                          # 🦀 Frontend Rust
@@ -357,17 +356,17 @@ Este projeto usa **UV**, um gerenciador de pacotes Python ultrarrápido escrito 
 # Criar ambiente virtual
 uv venv venv
 
-# Instalar dependências
-uv pip install -r requirements.txt
+# Instalar dependências (sincronizar projeto)
+uv sync
 
-# Instalar pacote específico
-uv pip install nome-pacote
+# Adicionar pacote específico
+uv add nome-pacote
 
 # Listar pacotes instalados
-uv pip list
+uv tree
 
-# Congelar dependências
-uv pip freeze > requirements.txt
+# Sincronizar dependências (com uv sync se usar project)
+# uv pip install .
 ```
 
 > [!NOTE]
@@ -412,7 +411,7 @@ Após a instalação, **reinicie o terminal** e execute `setup.bat` ou `setup.sh
 
 1. Verifique se Python 3.11+ está instalado: `python --version`
 2. Ative o ambiente virtual
-3. Instale dependências: `uv pip install -r backend/requirements.txt`
+3. Instale dependências: `uv sync` (na pasta backend)
 4. Inicie: `python backend/main.py`
 5. Confirme que está rodando em `http://localhost:8000`
 

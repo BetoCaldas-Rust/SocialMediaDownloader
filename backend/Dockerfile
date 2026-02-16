@@ -12,9 +12,9 @@ WORKDIR /app
 # Instala UV - gerenciador de pacotes Python ultrarrápido
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copia requirements e instala dependências com UV
-COPY requirements.txt .
-RUN uv pip install --system --no-cache -r requirements.txt
+# Copia pyproject.toml e instala dependências com UV
+COPY pyproject.toml .
+RUN uv pip install --system --no-cache .
 
 # Copia código do backend
 COPY . .

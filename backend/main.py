@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Dict
@@ -16,7 +16,7 @@ from config_manager import ConfigManager
 from validators import detect_platform, is_supported_url
 
 
-# Variáveis globais para managers
+# VariÃ¡veis globais para managers
 config_manager: ConfigManager = None
 download_manager: DownloadManager = None
 
@@ -29,20 +29,20 @@ async def lifespan(app: FastAPI):
     # Startup
     config_manager = ConfigManager()
     download_manager = DownloadManager(config_manager)
-    print("🚀 Backend iniciado!", flush=True)
-    print(f"📁 Pasta de downloads: {config_manager.get_config().default_path}", flush=True)
-    print("✨ Servidor pronto no http://localhost:8000", flush=True)
+    print("ðŸš€ Backend iniciado!", flush=True)
+    print(f"ðŸ“ Pasta de downloads: {config_manager.get_config().default_path}", flush=True)
+    print("âœ¨ Servidor pronto no http://localhost:8000", flush=True)
     
     yield
     
     # Shutdown
-    print("👋 Backend finalizado!")
+    print("ðŸ‘‹ Backend finalizado!")
 
 
 # Cria app FastAPI
 app = FastAPI(
     title="Social Media Downloader API",
-    description="API para download de vídeos de redes sociais",
+    description="API para download de vÃ­deos de redes sociais",
     version="1.0.4",
     lifespan=lifespan
 )
@@ -51,7 +51,7 @@ app = FastAPI(
 # Configura CORS para permitir requests do frontend Rust
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produção, especificar domínios
+    allow_origins=["*"],  # Em produÃ§Ã£o, especificar domÃ­nios
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,7 +71,7 @@ async def root():
 @app.post("/download", response_model=DownloadResponse)
 async def initiate_download(request: DownloadRequest):
     """
-    Inicia download de um vídeo
+    Inicia download de um vÃ­deo
     
     Args:
         request: DownloadRequest com URL e path opcional
@@ -83,7 +83,7 @@ async def initiate_download(request: DownloadRequest):
     if not is_supported_url(request.url):
         raise HTTPException(
             status_code=400,
-            detail="URL inválida ou não suportada"
+            detail="URL invÃ¡lida ou nÃ£o suportada"
         )
     
     try:
@@ -115,14 +115,14 @@ async def get_download_status(download_id: str):
         download_id: ID do download
         
     Returns:
-        DownloadStatusResponse com informações do download
+        DownloadStatusResponse com informaÃ§Ãµes do download
     """
     status = download_manager.get_status(download_id)
     
     if not status:
         raise HTTPException(
             status_code=404,
-            detail="Download não encontrado"
+            detail="Download nÃ£o encontrado"
         )
     
     return status
@@ -134,7 +134,7 @@ async def get_all_downloads():
     Retorna todos os downloads
     
     Returns:
-        Dicionário com todos os downloads
+        DicionÃ¡rio com todos os downloads
     """
     return download_manager.get_all_downloads()
 
@@ -142,10 +142,10 @@ async def get_all_downloads():
 @app.get("/config", response_model=Config)
 async def get_config():
     """
-    Retorna configurações atuais
+    Retorna configuraÃ§Ãµes atuais
     
     Returns:
-        Config com configurações
+        Config com configuraÃ§Ãµes
     """
     return config_manager.get_config()
 
@@ -153,10 +153,10 @@ async def get_config():
 @app.post("/config", response_model=Config)
 async def update_config(request: ConfigUpdateRequest):
     """
-    Atualiza configurações
+    Atualiza configuraÃ§Ãµes
     
     Args:
-        request: ConfigUpdateRequest com novas configurações
+        request: ConfigUpdateRequest com novas configuraÃ§Ãµes
         
     Returns:
         Config atualizado
@@ -172,7 +172,7 @@ async def update_config(request: ConfigUpdateRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao atualizar configurações: {str(e)}"
+            detail=f"Erro ao atualizar configuraÃ§Ãµes: {str(e)}"
         )
 
 
@@ -185,14 +185,14 @@ async def detect_platform_from_url(url: str):
         url: URL para detectar
         
     Returns:
-        PlatformInfo com informações da plataforma
+        PlatformInfo com informaÃ§Ãµes da plataforma
     """
     platform = detect_platform(url)
     
     if not platform:
         raise HTTPException(
             status_code=400,
-            detail="URL inválida"
+            detail="URL invÃ¡lida"
         )
     
     return platform
