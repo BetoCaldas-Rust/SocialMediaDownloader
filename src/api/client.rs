@@ -17,10 +17,18 @@ impl ApiClient {
         }
     }
 
-    pub async fn health_check(&self) -> Result<bool, String> {
+    pub async fn health_check(&self) -> Result<String, String> {
         let url = format!("{}/", self.base_url);
         match self.client.get(&url).send().await {
-            Ok(response) => Ok(response.status().is_success()),
+            Ok(response) => {
+                if response.status().is_success() {
+                    let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+                    let version = json["version"].as_str().unwrap_or("desconhecida").to_string();
+                    Ok(version)
+                } else {
+                    Err(format!("Status HTTP: {}", response.status()))
+                }
+            },
             Err(e) => Err(format!("Erro ao conectar: {}", e)),
         }
     }

@@ -1,12 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
+chcp 65001 >nul
 
 echo ========================================
 echo  SMD - Gerador de Instalador Automático
 echo ========================================
 
-REM 1. Ler versão atual do Cargo.toml
-set POWERSHELL_CMD="(gc Cargo.toml | Select-String -Pattern '^version\s*=\s*\"(.*?)\"' | select -First 1).Matches.Groups[1].Value"
+REM 1. Ler versão atual do Cargo.toml (usando UTF8 explicitamente)
+set POWERSHELL_CMD="(Get-Content Cargo.toml -Raw -Encoding utf8 | Select-String -Pattern '(?m)^version\s*=\s*\"(.*?)\"' | select -First 1).Matches.Groups[1].Value"
 for /f "usebackq tokens=*" %%v in (`powershell -Command !POWERSHELL_CMD!`) do set VERSION=%%v
 
 if "!VERSION!"=="" (
@@ -28,10 +29,10 @@ echo Nova Versão: !NEW_VERSION!
 
 REM 3. Atualizar Arquivos
 echo [1/4] Atualizando Cargo.toml...
-powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content Cargo.toml -Raw; $c = $c -replace '(?s)(\[package\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\[package\.metadata\.packager\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('Cargo.toml', $c, (New-Object System.Text.UTF8Encoding($false)))"
+powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content Cargo.toml -Raw -Encoding utf8; $c = $c -replace '(?s)(\[package\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\[package\.metadata\.packager\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('Cargo.toml', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
 echo [2/4] Atualizando backend/main.py...
-powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content backend/main.py -Raw; $c = $c -replace '(?s)(FastAPI\(.*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\"version\":\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('backend/main.py', $c, (New-Object System.Text.UTF8Encoding($false)))"
+powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content backend/main.py -Raw -Encoding utf8; $c = $c -replace '(?s)(FastAPI\(.*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\"version\":\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('backend/main.py', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
 REM 4. Build Backend
 echo [3/4] Compilando Backend Python (PyInstaller)...
@@ -45,7 +46,14 @@ if %errorlevel% neq 0 (
 cd ..
 
 REM 5. Build Installer
-echo [4/4] Gerando Instalador com cargo packager...
+echo [4/4] Compilando Frontend e Gerando Instalador...
+cargo build --release
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao compilar frontend!
+    pause
+    exit /b 1
+)
+
 cargo packager --release
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao gerar instalador!
@@ -56,7 +64,7 @@ if %errorlevel% neq 0 (
 REM 6. Fim
 echo.
 echo ========================================
-echo  SUCESSO! Versão !NEW_VERSION! gerada.
+echo  SUCESSO: Versão !NEW_VERSION! gerada.
 echo ========================================
 echo Local: dist\social-media-downloader_!NEW_VERSION!_x64-setup.exe
 echo.

@@ -5,7 +5,6 @@ use egui::{Align, Button, FontId, Layout, ProgressBar, RichText, Rounding, Scrol
 use std::collections::HashMap;
 use std::process::Command;
 #[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -62,7 +61,8 @@ impl DownloaderApp {
         let client_clone = api_client.clone();
         let runtime_clone = runtime.clone();
         let backend_connected = runtime_clone.block_on(async move {
-            if client_clone.health_check().await.unwrap_or(false) {
+            if let Ok(version) = client_clone.health_check().await {
+                println!("✅ Conectado ao backend (v{})! [Frontend v{}]", version, std::env!("CARGO_PKG_VERSION"));
                 return true;
             }
 
@@ -120,8 +120,8 @@ impl DownloaderApp {
                     
                     for i in 1..=15 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                        if client_clone.health_check().await.unwrap_or(false) {
-                            println!("✅ Conectado ao backend (v{})!", std::env!("CARGO_PKG_VERSION"));
+                        if let Ok(version) = client_clone.health_check().await {
+                            println!("✅ Conectado ao backend (v{})! [Frontend v{}]", version, std::env!("CARGO_PKG_VERSION"));
                             return true;
                         }
                         println!("⏳ Tentativa {}/15: Aguardando resposta do servidor...", i);
@@ -393,7 +393,7 @@ impl eframe::App for DownloaderApp {
                 let ctx_clone = ctx.clone();
                 let api_client_spawn = self.api_client.clone();
                 runtime.spawn(async move {
-                    if let Ok(true) = api_client_spawn.health_check().await {
+                    if let Ok(_version) = api_client_spawn.health_check().await {
                         ctx_clone.request_repaint();
                     }
                 });

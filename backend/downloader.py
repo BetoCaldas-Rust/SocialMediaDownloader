@@ -139,7 +139,7 @@ class DownloadManager:
             
             # Observa o log por erros onde a lib pede para ser atualizada
             keywords = ["yt-dlp -U"]
-            if any(kw in error_msg.lower() for kw in keywords):
+            if any(kw.lower() in error_msg.lower() for kw in keywords):
                 print("⚠️ Erro do yt-dlp sugere versão desatualizada.")
                 print("🔄 Iniciando auto-update...")
                 from updater import update_yt_dlp

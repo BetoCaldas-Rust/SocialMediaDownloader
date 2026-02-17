@@ -21,7 +21,7 @@ from updater import apply_update_path, update_yt_dlp
 apply_update_path()
 
 
-# VariÃ¡veis globais para managers
+# Variáveis globais para managers
 config_manager: ConfigManager = None
 download_manager: DownloadManager = None
 
@@ -35,24 +35,24 @@ async def lifespan(app: FastAPI):
     config_manager = ConfigManager()
     download_manager = DownloadManager(config_manager)
     
-    # Removemos o update automÃ¡tico do startup para evitar downloads desnecessÃ¡rios.
-    # O update agora Ã© estritamente reativo (em caso de erro) ou manual via endpoint.
+    # Removemos o update automático do startup para evitar downloads desnecessários.
+    # O update agora é estritamente reativo (em caso de erro) ou manual via endpoint.
     
-    print("ðŸš€ Backend iniciado!", flush=True)
-    print(f"ðŸ“‚ Pasta de downloads: {config_manager.get_config().default_path}", flush=True)
-    print("âœ¨ Servidor pronto no http://localhost:8000", flush=True)
+    print("🚀 Backend iniciado!", flush=True)
+    print(f"📂 Pasta de downloads: {config_manager.get_config().default_path}", flush=True)
+    print("✨ Servidor pronto no http://localhost:8000", flush=True)
     
     yield
     
     # Shutdown
-    print("ðŸ‘‹ Backend finalizado!")
+    print("👋 Backend finalizado!")
 
 
 # Cria app FastAPI
 app = FastAPI(
     title="Social Media Downloader API",
-    description="API para download de vÃ­deos de redes sociais",
-    version="1.0.9",
+    description="API para download de vídeos de redes sociais",
+    version="1.0.13",
     lifespan=lifespan
 )
 
@@ -60,7 +60,7 @@ app = FastAPI(
 # Configura CORS para permitir requests do frontend Rust
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Em produÃ§Ã£o, especificar domÃ­nios
+    allow_origins=["*"],  # Em produção, especificar domínios
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -73,19 +73,19 @@ async def root():
     return {
         "status": "online",
         "service": "Social Media Downloader API",
-        "version": "1.0.9"
+        "version": "1.0.13"
     }
 
 
 @app.post("/download", response_model=DownloadResponse)
 async def initiate_download(request: DownloadRequest):
     """
-    Inicia download de um vÃ­deo
+    Inicia download de um vídeo
     """
     if not is_supported_url(request.url):
         raise HTTPException(
             status_code=400,
-            detail="URL invÃ¡lida ou nÃ£o suportada"
+            detail="URL inválida ou não suportada"
         )
     
     try:
@@ -116,7 +116,7 @@ async def get_download_status(download_id: str):
     if not status:
         raise HTTPException(
             status_code=404,
-            detail="Download nÃ£o encontrado"
+            detail="Download não encontrado"
         )
     return status
 
@@ -132,7 +132,7 @@ async def get_all_downloads():
 @app.get("/config", response_model=Config)
 async def get_config():
     """
-    Retorna configuraÃ§Ãµes atuais
+    Retorna configurações atuais
     """
     return config_manager.get_config()
 
@@ -140,7 +140,7 @@ async def get_config():
 @app.post("/config", response_model=Config)
 async def update_config(request: ConfigUpdateRequest):
     """
-    Atualiza configuraÃ§Ãµes
+    Atualiza configurações
     """
     try:
         updated_config = config_manager.update_config(
@@ -152,7 +152,7 @@ async def update_config(request: ConfigUpdateRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao atualizar configuraÃ§Ãµes: {str(e)}"
+            detail=f"Erro ao atualizar configurações: {str(e)}"
         )
 
 
@@ -165,7 +165,7 @@ async def detect_platform_from_url(url: str):
     if not platform:
         raise HTTPException(
             status_code=400,
-            detail="URL invÃ¡lida"
+            detail="URL inválida"
         )
     return platform
 
@@ -173,7 +173,7 @@ async def detect_platform_from_url(url: str):
 @app.post("/yt-dlp/update")
 async def trigger_yt_dlp_update():
     """
-    Aciona a atualizaÃ§Ã£o manual do yt-dlp
+    Aciona a atualização manual do yt-dlp
     """
     success = update_yt_dlp()
     if success:
