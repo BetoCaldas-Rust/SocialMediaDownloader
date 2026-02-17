@@ -15,6 +15,7 @@ class DownloadManager:
         self.config_manager = config_manager
         self.downloads: Dict[str, DownloadStatusResponse] = {}
         self.active_downloads: Dict[str, asyncio.Task] = {}
+        print(f"🎬 yt-dlp versão: {yt_dlp.version.__version__}", flush=True)
     
     def _progress_hook(self, download_id: str, d: dict):
         """Callback de progresso do yt-dlp"""
@@ -131,9 +132,19 @@ class DownloadManager:
         
         except Exception as e:
             # Marca como falho
+            error_msg = str(e)
             if download_id in self.downloads:
                 self.downloads[download_id].status = DownloadStatus.FAILED
-                self.downloads[download_id].error = str(e)
+                self.downloads[download_id].error = error_msg
+            
+            # Observa o log por erros onde a lib pede para ser atualizada
+            keywords = ["yt-dlp -U"]
+            if any(kw in error_msg.lower() for kw in keywords):
+                print("⚠️ Erro do yt-dlp sugere versão desatualizada.")
+                print("🔄 Iniciando auto-update...")
+                from updater import update_yt_dlp
+                # Executa update em background
+                asyncio.create_task(asyncio.to_thread(update_yt_dlp))
         
         finally:
             # Remove da lista de downloads ativos

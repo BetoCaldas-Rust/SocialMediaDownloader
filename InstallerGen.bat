@@ -5,12 +5,15 @@ echo ========================================
 echo  SMD - Gerador de Instalador Automático
 echo ========================================
 
-REM 1. Ler versão atual
-if not exist version.cfg (
-    echo [ERRO] version.cfg não encontrado! Criando com 1.0.6...
-    echo 1.0.6 > version.cfg
+REM 1. Ler versão atual do Cargo.toml
+set POWERSHELL_CMD="(gc Cargo.toml | Select-String -Pattern '^version\s*=\s*\"(.*?)\"' | select -First 1).Matches.Groups[1].Value"
+for /f "usebackq tokens=*" %%v in (`powershell -Command !POWERSHELL_CMD!`) do set VERSION=%%v
+
+if "!VERSION!"=="" (
+    echo [ERRO] Não foi possível encontrar a versão no Cargo.toml!
+    pause
+    exit /b 1
 )
-set /p VERSION=<version.cfg
 echo Versão Atual: !VERSION!
 
 REM 2. Incrementar Versão (Patch)
@@ -25,10 +28,10 @@ echo Nova Versão: !NEW_VERSION!
 
 REM 3. Atualizar Arquivos
 echo [1/4] Atualizando Cargo.toml...
-powershell -Command "(gc Cargo.toml) -replace 'version = \"!VERSION!\"', 'version = \"!NEW_VERSION!\"' | Out-File -Encoding UTF8 Cargo.toml"
+powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content Cargo.toml -Raw; $c = $c -replace '(?s)(\[package\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\[package\.metadata\.packager\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('Cargo.toml', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
 echo [2/4] Atualizando backend/main.py...
-powershell -Command "(gc backend/main.py) -replace 'version=\"!VERSION!\"', 'version=\"!NEW_VERSION!\"' | Out-File -Encoding UTF8 backend/main.py"
+powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content backend/main.py -Raw; $c = $c -replace '(?s)(FastAPI\(.*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\"version\":\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('backend/main.py', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
 REM 4. Build Backend
 echo [3/4] Compilando Backend Python (PyInstaller)...
@@ -50,9 +53,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM 6. Persistir Nova Versão
-echo !NEW_VERSION! > version.cfg
-
+REM 6. Fim
 echo.
 echo ========================================
 echo  SUCESSO! Versão !NEW_VERSION! gerada.

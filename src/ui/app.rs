@@ -65,6 +65,18 @@ impl DownloaderApp {
             if client_clone.health_check().await.unwrap_or(false) {
                 return true;
             }
+
+            // Garante que a pasta de updates existe no %APPDATA%
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(appdata) = std::env::var("APPDATA") {
+                    let update_dir = std::path::Path::new(&appdata).join("SMD").join("updates");
+                    if !update_dir.exists() {
+                        let _ = std::fs::create_dir_all(&update_dir);
+                        println!("📁 Criada pasta de updates em: {:?}", update_dir);
+                    }
+                }
+            }
             
             let exe_dir = std::env::current_exe()
                 .ok()
@@ -108,7 +120,10 @@ impl DownloaderApp {
                     
                     for i in 1..=15 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                        if client_clone.health_check().await.unwrap_or(false) {
                             println!("✅ Conectado ao backend (v{})!", std::env!("CARGO_PKG_VERSION"));
+                            return true;
+                        }
                         println!("⏳ Tentativa {}/15: Aguardando resposta do servidor...", i);
                     }
                 } else {
