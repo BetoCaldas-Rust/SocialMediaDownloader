@@ -12,6 +12,7 @@ pub struct SettingsWindow {
     pub show: bool,
     pub backend_url: String,
     pub download_path: String,
+    pub cookies_from_browser: String,
 }
 
 impl Default for SettingsWindow {
@@ -20,6 +21,7 @@ impl Default for SettingsWindow {
             show: false,
             backend_url: "http://localhost:8000".to_string(),
             download_path: String::new(),
+            cookies_from_browser: String::new(),
         }
     }
 }
@@ -145,6 +147,7 @@ impl DownloaderApp {
         let mut settings = SettingsWindow::default();
         if let Some(config) = initial_config {
             settings.download_path = config.default_path;
+            settings.cookies_from_browser = config.cookies_from_browser.unwrap_or_default();
         }
 
         Self {
@@ -240,13 +243,24 @@ impl DownloaderApp {
     }
 
     fn render_header(&mut self, ui: &mut Ui) {
+        ui.add_space(20.0);
+        ui.horizontal(|ui| {
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.add_space(ui.available_width() / 2.0 - 140.0);
+                ui.label(
+                    RichText::new("📥 Social Media Downloader")
+                        .size(28.0)
+                        .color(ACCENT_PRIMARY),
+                );
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let settings_btn = Button::new(RichText::new("⚙").size(20.0).color(TEXT_SECONDARY));
+                if ui.add(settings_btn).on_hover_text("Configurações").clicked() {
+                    self.settings.show = !self.settings.show;
+                }
+            });
+        });
         ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
-            ui.label(
-                RichText::new("📥 Social Media Downloader")
-                    .size(28.0)
-                    .color(ACCENT_PRIMARY),
-            );
             ui.add_space(5.0);
             ui.label(
                 RichText::new("Baixe vídeos de YouTube, Instagram, TikTok e mais!")
@@ -255,6 +269,100 @@ impl DownloaderApp {
             );
             ui.add_space(20.0);
         });
+    }
+
+    fn render_settings(&mut self, ui: &mut Ui) {
+        if !self.settings.show {
+            return;
+        }
+
+        ui.group(|ui| {
+            ui.set_min_width(ui.available_width());
+            ui.vertical(|ui| {
+                ui.label(RichText::new("⚙ Configurações").size(16.0).color(ACCENT_PRIMARY));
+                ui.add_space(8.0);
+
+                ui.label(RichText::new("Pasta de Downloads").color(TEXT_PRIMARY).size(13.0));
+                ui.add_space(3.0);
+                let path_edit = egui::TextEdit::singleline(&mut self.settings.download_path)
+                    .hint_text("Caminho para salvar os downloads")
+                    .desired_width(ui.available_width());
+                ui.add(path_edit);
+
+                ui.add_space(10.0);
+
+                ui.label(
+                    RichText::new("Browser para cookies (vídeos de membros / conteúdo privado)")
+                        .color(TEXT_PRIMARY)
+                        .size(13.0),
+                );
+                ui.add_space(3.0);
+                ui.label(
+                    RichText::new("Necessário para baixar vídeos exclusivos de canais que você é membro.")
+                        .color(TEXT_SECONDARY)
+                        .size(11.0),
+                );
+                ui.add_space(5.0);
+
+                let browsers = ["Desativado", "chrome", "firefox", "edge", "brave", "opera", "safari"];
+                let current = if self.settings.cookies_from_browser.is_empty() {
+                    "Desativado".to_string()
+                } else {
+                    self.settings.cookies_from_browser.clone()
+                };
+
+                egui::ComboBox::from_id_source("browser_combo")
+                    .selected_text(&current)
+                    .width(200.0)
+                    .show_ui(ui, |ui: &mut Ui| {
+                        for browser in &browsers {
+                            let is_selected = current.as_str() == *browser;
+                            if ui.selectable_label(is_selected, *browser).clicked() {
+                                self.settings.cookies_from_browser = if *browser == "Desativado" {
+                                    String::new()
+                                } else {
+                                    browser.to_string()
+                                };
+                            }
+                        }
+                    });
+
+                ui.add_space(10.0);
+
+                let save_btn = Button::new(RichText::new("💾 Salvar").size(14.0).color(BG_DARK))
+                    .fill(ACCENT_PRIMARY)
+                    .min_size(Vec2::new(120.0, 32.0));
+
+                if ui.add(save_btn).clicked() {
+                    let path = if self.settings.download_path.is_empty() {
+                        None
+                    } else {
+                        Some(self.settings.download_path.clone())
+                    };
+                    let cookies = if self.settings.cookies_from_browser.is_empty() {
+                        None
+                    } else {
+                        Some(self.settings.cookies_from_browser.clone())
+                    };
+
+                    let api_client = self.api_client.clone();
+                    let runtime = self.runtime.clone();
+                    runtime.spawn(async move {
+                        let req = crate::api::models::ConfigUpdateRequest {
+                            default_path: path,
+                            platform_paths: None,
+                            temporary: false,
+                            cookies_from_browser: cookies,
+                        };
+                        let _ = api_client.update_config(req).await;
+                    });
+
+                    self.settings.show = false;
+                }
+            });
+        });
+
+        ui.add_space(10.0);
     }
 
     fn render_url_input(&mut self, ui: &mut Ui) {
@@ -415,6 +523,9 @@ impl eframe::App for DownloaderApp {
 
             // Header
             self.render_header(ui);
+
+            // Settings Panel
+            self.render_settings(ui);
 
             // URL Input
             self.render_url_input(ui);

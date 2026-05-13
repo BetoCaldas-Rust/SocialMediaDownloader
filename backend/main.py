@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Social Media Downloader API",
     description="API para download de vídeos de redes sociais",
-    version="1.0.13",
+    version="1.0.14",
     lifespan=lifespan
 )
 
@@ -73,7 +73,7 @@ async def root():
     return {
         "status": "online",
         "service": "Social Media Downloader API",
-        "version": "1.0.13"
+        "version": "1.0.14"
     }
 
 
@@ -146,7 +146,8 @@ async def update_config(request: ConfigUpdateRequest):
         updated_config = config_manager.update_config(
             default_path=request.default_path,
             platform_paths=request.platform_paths,
-            temporary=request.temporary
+            temporary=request.temporary,
+            cookies_from_browser=request.cookies_from_browser
         )
         return updated_config
     except Exception as e:

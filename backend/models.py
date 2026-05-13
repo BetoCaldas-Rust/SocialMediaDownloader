@@ -51,6 +51,7 @@ class Config(BaseModel):
     default_path: str
     platform_paths: Dict[str, str] = {}
     temporary: bool = False
+    cookies_from_browser: Optional[str] = None
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -58,6 +59,7 @@ class ConfigUpdateRequest(BaseModel):
     default_path: Optional[str] = None
     platform_paths: Optional[Dict[str, str]] = None
     temporary: bool = False
+    cookies_from_browser: Optional[str] = None
 
 
 class PlatformInfo(BaseModel):

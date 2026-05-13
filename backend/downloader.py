@@ -109,12 +109,16 @@ class DownloadManager:
         try:
             # Configurações do yt-dlp
             ydl_opts = {
-                'format': 'best',  # Melhor qualidade
+                'format': 'best',
                 'outtmpl': f'{download_path}/%(title)s.%(ext)s',
                 'progress_hooks': [lambda d: self._progress_hook(download_id, d)],
                 'quiet': False,
                 'no_warnings': False,
             }
+
+            browser = self.config_manager.get_config().cookies_from_browser
+            if browser:
+                ydl_opts['cookiesfrombrowser'] = (browser,)
             
             # Executa download em thread separada para não bloquear
             loop = asyncio.get_event_loop()

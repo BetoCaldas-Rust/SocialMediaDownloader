@@ -87,9 +87,10 @@ class ConfigManager:
             # Se não for subcaminho, retorna o nome do arquivo
             return Path(full_path).name
     
-    def update_config(self, default_path: Optional[str] = None, 
+    def update_config(self, default_path: Optional[str] = None,
                      platform_paths: Optional[Dict[str, str]] = None,
-                     temporary: bool = False) -> Config:
+                     temporary: bool = False,
+                     cookies_from_browser: Optional[str] = None) -> Config:
         """
         Atualiza configurações
         
@@ -97,6 +98,7 @@ class ConfigManager:
             default_path: Novo caminho padrão
             platform_paths: Novos caminhos por plataforma
             temporary: Se True, não salva no arquivo
+            cookies_from_browser: Browser para extrair cookies (ex: chrome, firefox, edge)
             
         Returns:
             Configuração atualizada
@@ -106,6 +108,8 @@ class ConfigManager:
         
         if platform_paths:
             self.config.platform_paths.update(platform_paths)
+
+        self.config.cookies_from_browser = cookies_from_browser or None
         
         if not temporary:
             self.save_config(self.config)
