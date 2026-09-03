@@ -88,28 +88,31 @@ class ConfigManager:
             return Path(full_path).name
     
     def update_config(self, default_path: Optional[str] = None,
-                     platform_paths: Optional[Dict[str, str]] = None,
-                     temporary: bool = False,
-                     cookies_from_browser: Optional[str] = None) -> Config:
+                      platform_paths: Optional[Dict[str, str]] = None,
+                      temporary: bool = False,
+                      cookies_from_browser: Optional[str] = None,
+                      cookie_file: Optional[str] = None) -> Config:
         """
         Atualiza configurações
-        
+
         Args:
             default_path: Novo caminho padrão
             platform_paths: Novos caminhos por plataforma
             temporary: Se True, não salva no arquivo
             cookies_from_browser: Browser para extrair cookies (ex: chrome, firefox, edge)
-            
+            cookie_file: Arquivo cookies.txt exportado do navegador
+
         Returns:
             Configuração atualizada
         """
         if default_path:
             self.config.default_path = default_path
-        
+
         if platform_paths:
             self.config.platform_paths.update(platform_paths)
 
         self.config.cookies_from_browser = cookies_from_browser or None
+        self.config.cookie_file = cookie_file or None
         
         if not temporary:
             self.save_config(self.config)

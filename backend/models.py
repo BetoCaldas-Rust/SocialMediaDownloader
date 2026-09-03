@@ -52,6 +52,7 @@ class Config(BaseModel):
     platform_paths: Dict[str, str] = {}
     temporary: bool = False
     cookies_from_browser: Optional[str] = None
+    cookie_file: Optional[str] = None
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -60,6 +61,7 @@ class ConfigUpdateRequest(BaseModel):
     platform_paths: Optional[Dict[str, str]] = None
     temporary: bool = False
     cookies_from_browser: Optional[str] = None
+    cookie_file: Optional[str] = None
 
 
 class PlatformInfo(BaseModel):

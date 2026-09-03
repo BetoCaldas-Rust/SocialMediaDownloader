@@ -71,10 +71,30 @@ def cookie_browsers_for(url: str, configured: Optional[str]) -> list[Optional[st
 def login_required_message(url: str, original: str) -> str:
     if "instagram.com" not in url.lower():
         return original
+    if "could not copy" in original.lower():
+        return (
+            "Não foi possível ler os cookies: feche o browser por completo "
+            "(inclusive processos em segundo plano) e tente de novo. "
+            "Alternativas: exporte um arquivo cookies.txt (extensão "
+            "'Get cookies.txt LOCALLY') e informe em Configurações, "
+            "ou entre no Instagram pelo Firefox."
+        )
     return (
-        "Instagram exige login. Entre no Instagram no Chrome, Edge ou Firefox "
-        "e selecione esse browser em Configurações > Browser para cookies."
+        "Instagram exige login e nenhum cookie válido foi encontrado. "
+        "Opções: 1) feche o browser e tente de novo; 2) exporte cookies.txt "
+        "e informe em Configurações > Arquivo cookies.txt; "
+        "3) entre no Instagram pelo Firefox e selecione firefox."
     )
+
+
+def cookie_file_for(config) -> Optional[str]:
+    path = (config.cookie_file or "").strip()
+    if not path:
+        return None
+    if not Path(path).is_file():
+        print(f"⚠️ Arquivo de cookies não encontrado: {path}", flush=True)
+        return None
+    return path
 
 
 class DownloadManager:
@@ -220,10 +240,24 @@ class DownloadManager:
                 del self.active_downloads[download_id]
     
     def _run_download_attempts(self, url: str, base_opts: dict):
-        configured = self.config_manager.get_config().cookies_from_browser
+        config = self.config_manager.get_config()
         last_error: Optional[Exception] = None
 
-        for browser in cookie_browsers_for(url, configured):
+        cookie_file = cookie_file_for(config)
+        if cookie_file:
+            opts = dict(base_opts)
+            opts["cookiefile"] = cookie_file
+            print(f"🍪 Tentando arquivo de cookies: {cookie_file}", flush=True)
+            try:
+                self._run_yt_dlp(url, opts)
+                return
+            except Exception as error:
+                last_error = error
+                print(f"⚠️ Falha com cookiefile: {error}", flush=True)
+                if not is_cookie_retryable(str(error)):
+                    raise
+
+        for browser in cookie_browsers_for(url, config.cookies_from_browser):
             opts = dict(base_opts)
             if browser:
                 opts["cookiesfrombrowser"] = (browser,)

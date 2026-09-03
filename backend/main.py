@@ -157,7 +157,8 @@ async def update_config(request: ConfigUpdateRequest):
             default_path=request.default_path,
             platform_paths=request.platform_paths,
             temporary=request.temporary,
-            cookies_from_browser=request.cookies_from_browser
+            cookies_from_browser=request.cookies_from_browser,
+            cookie_file=request.cookie_file
         )
         return updated_config
     except Exception as e:

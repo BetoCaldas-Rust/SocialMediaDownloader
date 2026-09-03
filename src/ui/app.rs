@@ -13,6 +13,7 @@ pub struct SettingsWindow {
     pub backend_url: String,
     pub download_path: String,
     pub cookies_from_browser: String,
+    pub cookie_file: String,
 }
 
 impl Default for SettingsWindow {
@@ -22,6 +23,7 @@ impl Default for SettingsWindow {
             backend_url: "http://localhost:8000".to_string(),
             download_path: String::new(),
             cookies_from_browser: String::new(),
+            cookie_file: String::new(),
         }
     }
 }
@@ -145,6 +147,7 @@ impl DownloaderApp {
         if let Some(config) = initial_config {
             settings.download_path = config.default_path;
             settings.cookies_from_browser = config.cookies_from_browser.unwrap_or_default();
+            settings.cookie_file = config.cookie_file.unwrap_or_default();
         }
 
         Self {
@@ -326,6 +329,25 @@ impl DownloaderApp {
 
                 ui.add_space(10.0);
 
+                ui.label(
+                    RichText::new("Arquivo cookies.txt (alternativa ao browser)")
+                        .color(TEXT_PRIMARY)
+                        .size(13.0),
+                );
+                ui.add_space(3.0);
+                ui.label(
+                    RichText::new("Se o Edge/Chrome estiver aberto, exporte os cookies (extensão 'Get cookies.txt LOCALLY') e informe o caminho aqui.")
+                        .color(TEXT_SECONDARY)
+                        .size(11.0),
+                );
+                ui.add_space(5.0);
+                let cookie_edit = egui::TextEdit::singleline(&mut self.settings.cookie_file)
+                    .hint_text("Ex: C:\\Users\\voce\\Downloads\\instagram.com_cookies.txt")
+                    .desired_width(ui.available_width());
+                ui.add(cookie_edit);
+
+                ui.add_space(10.0);
+
                 let save_btn = Button::new(RichText::new("💾 Salvar").size(14.0).color(BG_DARK))
                     .fill(ACCENT_PRIMARY)
                     .min_size(Vec2::new(120.0, 32.0));
@@ -341,6 +363,11 @@ impl DownloaderApp {
                     } else {
                         Some(self.settings.cookies_from_browser.clone())
                     };
+                    let cookie_file = if self.settings.cookie_file.trim().is_empty() {
+                        None
+                    } else {
+                        Some(self.settings.cookie_file.trim().to_string())
+                    };
 
                     let api_client = self.api_client.clone();
                     let runtime = self.runtime.clone();
@@ -350,6 +377,7 @@ impl DownloaderApp {
                             platform_paths: None,
                             temporary: false,
                             cookies_from_browser: cookies,
+                            cookie_file,
                         };
                         let _ = api_client.update_config(req).await;
                     });

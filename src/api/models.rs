@@ -33,6 +33,7 @@ pub struct Config {
     pub platform_paths: HashMap<String, String>,
     pub temporary: bool,
     pub cookies_from_browser: Option<String>,
+    pub cookie_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,6 +42,7 @@ pub struct ConfigUpdateRequest {
     pub platform_paths: Option<HashMap<String, String>>,
     pub temporary: bool,
     pub cookies_from_browser: Option<String>,
+    pub cookie_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
