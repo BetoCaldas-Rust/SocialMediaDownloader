@@ -1,11 +1,80 @@
+import os
 import uuid
 import asyncio
-from typing import Dict, Callable, Optional
+from typing import Dict, Optional
 from pathlib import Path
 import yt_dlp
 from models import DownloadStatus, DownloadStatusResponse
 from validators import detect_platform
 from config_manager import ConfigManager
+
+SITES_NEEDING_COOKIES = (
+    "instagram.com",
+    "facebook.com",
+    "fb.watch",
+    "threads.net",
+)
+
+BROWSER_PATHS = {
+    "chrome": ("LOCALAPPDATA", "Google/Chrome/User Data"),
+    "edge": ("LOCALAPPDATA", "Microsoft/Edge/User Data"),
+    "firefox": ("APPDATA", "Mozilla/Firefox"),
+    "brave": ("LOCALAPPDATA", "BraveSoftware/Brave-Browser/User Data"),
+    "opera": ("LOCALAPPDATA", "Opera Software/Opera Stable"),
+}
+
+COOKIE_RETRY_HINTS = (
+    "login required",
+    "rate-limit reached",
+    "requested content is not available",
+    "could not copy",
+    "failed to decrypt",
+    "unable to load cookies",
+    "could not find",
+    "no such browser",
+)
+
+
+def url_needs_cookies(url: str) -> bool:
+    lowered = url.lower()
+    return any(site in lowered for site in SITES_NEEDING_COOKIES)
+
+
+def is_cookie_retryable(error: str) -> bool:
+    lowered = error.lower()
+    return any(hint in lowered for hint in COOKIE_RETRY_HINTS)
+
+
+def installed_browsers() -> list[str]:
+    found = []
+    for name, (env_key, relative) in BROWSER_PATHS.items():
+        root = os.environ.get(env_key)
+        if root and (Path(root) / relative).exists():
+            found.append(name)
+    return found
+
+
+def cookie_browsers_for(url: str, configured: Optional[str]) -> list[Optional[str]]:
+    if configured:
+        browsers: list[Optional[str]] = [configured]
+    else:
+        browsers = []
+
+    if url_needs_cookies(url):
+        for browser in installed_browsers():
+            if browser not in browsers:
+                browsers.append(browser)
+
+    return browsers or [None]
+
+
+def login_required_message(url: str, original: str) -> str:
+    if "instagram.com" not in url.lower():
+        return original
+    return (
+        "Instagram exige login. Entre no Instagram no Chrome, Edge ou Firefox "
+        "e selecione esse browser em Configurações > Browser para cookies."
+    )
 
 
 class DownloadManager:
@@ -116,15 +185,10 @@ class DownloadManager:
                 'no_warnings': False,
             }
 
-            browser = self.config_manager.get_config().cookies_from_browser
-            if browser:
-                ydl_opts['cookiesfrombrowser'] = (browser,)
-            
-            # Executa download em thread separada para não bloquear
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
-                self._run_yt_dlp,
+                self._run_download_attempts,
                 url,
                 ydl_opts
             )
@@ -155,6 +219,27 @@ class DownloadManager:
             if download_id in self.active_downloads:
                 del self.active_downloads[download_id]
     
+    def _run_download_attempts(self, url: str, base_opts: dict):
+        configured = self.config_manager.get_config().cookies_from_browser
+        last_error: Optional[Exception] = None
+
+        for browser in cookie_browsers_for(url, configured):
+            opts = dict(base_opts)
+            if browser:
+                opts["cookiesfrombrowser"] = (browser,)
+                print(f"🍪 Tentando cookies do {browser}...", flush=True)
+            try:
+                self._run_yt_dlp(url, opts)
+                return
+            except Exception as error:
+                last_error = error
+                print(f"⚠️ Falha com cookies={browser}: {error}", flush=True)
+                if not is_cookie_retryable(str(error)):
+                    raise
+
+        if last_error:
+            raise RuntimeError(login_required_message(url, str(last_error))) from last_error
+
     def _run_yt_dlp(self, url: str, opts: dict):
         """Executa yt-dlp (blocking)"""
         with yt_dlp.YoutubeDL(opts) as ydl:

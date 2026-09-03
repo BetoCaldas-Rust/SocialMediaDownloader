@@ -1,5 +1,15 @@
+import sys
 import asyncio
 from fastapi import FastAPI, HTTPException
+
+# Console do Windows usa cp1252 por padrão e quebra com emojis.
+# Força UTF-8 para o backend nunca morrer no startup por causa de print.
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None:
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Dict
@@ -52,7 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Social Media Downloader API",
     description="API para download de vídeos de redes sociais",
-    version="1.0.14",
+    version="1.0.15",
     lifespan=lifespan
 )
 
@@ -73,7 +83,7 @@ async def root():
     return {
         "status": "online",
         "service": "Social Media Downloader API",
-        "version": "1.0.14"
+        "version": "1.0.15"
     }
 
 

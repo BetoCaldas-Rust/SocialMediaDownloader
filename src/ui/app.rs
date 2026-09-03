@@ -98,27 +98,24 @@ impl DownloaderApp {
                 let backend_exe = dir.join("smd-backend.exe");
                 
                 if backend_exe.exists() {
-                    println!("✅ Backend encontrado. Abrindo em nova janela...");
-                    
-                    let mut cmd = Command::new("cmd");
+                    println!("✅ Backend encontrado. Iniciando em nova janela do terminal...");
+
                     #[cfg(target_os = "windows")]
                     {
-                        // Usamos args individuais. O Rust cuida das aspas automaticamente se houver espaços.
-                        // "start" <titulo> <comando>...
-                        cmd.arg("/C")
-                           .arg("start")
-                           .arg("SMD Backend")
-                           .arg("cmd")
-                           .arg("/K")
-                           .arg(&backend_exe);
+                        use std::os::windows::process::CommandExt;
+                        const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+                        let _ = Command::new(&backend_exe)
+                            .creation_flags(CREATE_NEW_CONSOLE)
+                            .current_dir(&dir)
+                            .spawn();
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        cmd = Command::new(&backend_exe);
+                        let _ = Command::new(&backend_exe)
+                            .current_dir(&dir)
+                            .spawn();
                     }
-                    
-                    cmd.current_dir(&dir);
-                    let _ = cmd.spawn();
                     
                     for i in 1..=15 {
                         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -292,13 +289,13 @@ impl DownloaderApp {
                 ui.add_space(10.0);
 
                 ui.label(
-                    RichText::new("Browser para cookies (vídeos de membros / conteúdo privado)")
+                    RichText::new("Browser para cookies (Instagram, Facebook, membros)")
                         .color(TEXT_PRIMARY)
                         .size(13.0),
                 );
                 ui.add_space(3.0);
                 ui.label(
-                    RichText::new("Necessário para baixar vídeos exclusivos de canais que você é membro.")
+                    RichText::new("Instagram exige login. Use o mesmo browser em que você já está logado.")
                         .color(TEXT_SECONDARY)
                         .size(11.0),
                 );

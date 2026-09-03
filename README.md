@@ -2,6 +2,44 @@
 
 Aplicativo desktop multiplataforma para download de vídeos de redes sociais com **arquitetura híbrida**: GUI nativa em Rust + Backend REST API em Python.
 
+## 🗂️ TL;DR
+
+É um **aplicativo desktop para baixar vídeos de redes sociais**, com uma arquitetura híbrida Rust + Python.
+
+### 🏗️ Arquitetura
+
+| Camada | Tecnologia | Função |
+|--------|-----------|--------|
+| **Frontend** | Rust + [egui](https://github.com/emilk/egui) | GUI nativa, tema preto/amarelo |
+| **Backend** | Python + FastAPI + yt-dlp | REST API que executa os downloads |
+| **Comunicação** | HTTP REST (localhost:8000) | Frontend chama o backend via API |
+
+### ⚙️ Como funciona
+
+1. O **frontend Rust** (`src/main.rs`) abre uma janela nativa 800×600
+2. Ao iniciar, tenta conectar ao backend Python. Se não estiver rodando, **lança o `smd-backend.exe` automaticamente** em uma nova janela do terminal
+3. O usuário cola uma URL (YouTube, Instagram, TikTok, Twitter, etc.) no campo de input
+4. O frontend envia a URL via `POST /download` para o **backend FastAPI**
+5. O backend usa o **yt-dlp** para baixar o vídeo
+6. O frontend faz polling a cada 500ms no endpoint `GET /status/{id}` para mostrar progresso em tempo real
+
+### ✨ Funcionalidades principais
+
+- 🎬 Downloads de **1000+ sites** via yt-dlp
+- 📋 Hotkey global **Win+Shift+X** para capturar URL do clipboard
+- 🔒 Suporte a **cookies do navegador** (para vídeos de membros/conteúdo privado)
+- 📂 **Abre a pasta** no Explorer após o download
+- ⚙️ Configuração de pasta de destino
+- 🔄 Auto-atualização do yt-dlp via endpoint `/yt-dlp/update`
+- 🔁 Reconexão automática ao backend a cada 5 segundos se perder conexão
+- 🐋 Suporte a **Docker** para o backend
+
+### 📦 Distribuição
+
+O app é empacotado como um instalador Windows (via `cargo-packager`) que inclui tanto o executável Rust (`social-media-downloader.exe`) quanto o backend compilado (`smd-backend.exe`) — versão atual: **v1.0.14**.
+
+---
+
 ## ✨ Características
 
 - 🎨 **Interface moderna** com tema preto e amarelo
