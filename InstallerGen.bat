@@ -28,28 +28,16 @@ set NEW_VERSION=!MAJOR!.!MINOR!.!NEW_PATCH!
 echo Nova Versão: !NEW_VERSION!
 
 REM 3. Atualizar Arquivos
-echo [1/4] Atualizando Cargo.toml...
+echo [1/2] Atualizando Cargo.toml...
 powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content Cargo.toml -Raw -Encoding utf8; $c = $c -replace '(?s)(\[package\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\[package\.metadata\.packager\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('Cargo.toml', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
-echo [2/4] Atualizando backend/main.py...
-powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content backend/main.py -Raw -Encoding utf8; $c = $c -replace '(?s)(FastAPI\(.*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\"version\":\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('backend/main.py', $c, (New-Object System.Text.UTF8Encoding($false)))"
+REM TODO(F8): bundle resources/bin/yt-dlp sidecar (o build do backend via PyInstaller foi removido em F0)
 
-REM 4. Build Backend
-echo [3/4] Compilando Backend Python (PyInstaller)...
-cd backend
-uv run pyinstaller --onefile --name smd-backend main.py
-if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao compilar backend!
-    pause
-    exit /b 1
-)
-cd ..
-
-REM 5. Build Installer
-echo [4/4] Compilando Frontend e Gerando Instalador...
+REM 4. Build Installer
+echo [2/2] Compilando app e Gerando Instalador...
 cargo build --release
 if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao compilar frontend!
+    echo [ERRO] Falha ao compilar o app!
     pause
     exit /b 1
 )
@@ -61,7 +49,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM 6. Fim
+REM 5. Fim
 echo.
 echo ========================================
 echo  SUCESSO: Versão !NEW_VERSION! gerada.

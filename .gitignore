@@ -2,11 +2,7 @@
 /target/
 Cargo.lock
 
-# Python
-__pycache__/
-*.pyc
-venv/
-.env
+# Python (removido em F0: backend Python excluído; app agora é um binário Rust único)
 *.pyo
 *.pyd
 .Python

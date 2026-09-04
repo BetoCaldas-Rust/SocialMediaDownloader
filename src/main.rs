@@ -1,20 +1,30 @@
-mod api;
+mod core;
+mod features;
+mod i18n;
+mod services;
+mod storage;
 mod ui;
 
-use ui::app::DownloaderApp;
+use ui::app::SmdApp;
 
 fn main() -> Result<(), eframe::Error> {
+    services::log_buffer::init_tracing();
+    let locales_dir = i18n::loader::resolve_locales_dir();
+    i18n::registry::init_i18n(locales_dir);
+    let config = storage::config::AppConfig::load();
+    i18n::registry::set_locale(&config.locale);
+    let title = i18n::registry::t("app_title");
+    tracing::info!(target: "startup", "starting {title}");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
-            .with_min_inner_size([600.0, 400.0])
+            .with_inner_size([1120.0, 780.0])
+            .with_min_inner_size([1000.0, 650.0])
             .with_title("Social Media Downloader"),
         ..Default::default()
     };
-
     eframe::run_native(
         "Social Media Downloader",
         options,
-        Box::new(|cc| Ok(Box::new(DownloaderApp::new(cc)))),
+        Box::new(|creation| Ok(Box::new(SmdApp::new(creation)))),
     )
 }

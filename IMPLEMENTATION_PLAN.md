@@ -1,8 +1,10 @@
 # Social Media Downloader - Implementation Plan
 
-Aplicativo desktop para download de vídeos de redes sociais com **arquitetura híbrida**: GUI nativa em Rust + Backend REST API em Python com suporte a Docker.
+> Direção atual (F0, issue #2): este plano descrevia uma arquitetura híbrida Rust + Python que foi **substituída por um binário Rust único** — o backend Python, a camada HTTP, o Docker e as janelas de terminal separadas foram removidos. O conteúdo abaixo é histórico; o trabalho ativo está nos GitHub issues #1–#10.
 
-## User Review Required
+Aplicativo desktop para download de vídeos de redes sociais (plano histórico: ~~GUI nativa em Rust + Backend REST API em Python com suporte a Docker~~; direção atual: binário Rust único).
+
+## User Review Required (histórico — superseded em F0)
 
 > [!IMPORTANT]
 > **Arquitetura Híbrida Rust + Python + Docker**:
@@ -12,29 +14,19 @@ Aplicativo desktop para download de vídeos de redes sociais com **arquitetura h
 > - **Comunicação**: HTTP REST API (localhost durante desenvolvimento, pode ser remoto)
 
 > [!NOTE]
-> **Fluxo de Desenvolvimento**:
-> 1. Desenvolvimento local: Backend Python roda localmente, frontend Rust conecta via HTTP
-> 2. Deploy produção: Backend em Docker, frontend continua nativo
+> **Fluxo de Desenvolvimento** (histórico — superseded em F0; direção atual: processo único via `cargo run`):
+> 1. ~~Desenvolvimento local: Backend Python roda localmente, frontend Rust conecta via HTTP~~
+> 2. ~~Deploy produção: Backend em Docker, frontend continua nativo~~
 
 ## Proposed Changes
 
-### Backend (Python + FastAPI + yt-dlp)
+### Backend (histórico — removido em F0; mantido apenas como referência)
 
-#### [NEW] [backend/requirements.txt](file:///G:/Projetos/Tools/SocialMediaDownloader/backend/requirements.txt)
-```
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-yt-dlp==2024.1.1
-pydantic==2.5.3
-python-multipart==0.0.6
-```
+#### [REMOVED] backend/requirements.txt
+(removido em F0: o backend Python foi excluído; dependências de servidor HTTP não se aplicam ao binário Rust único)
 
-#### [NEW] [backend/main.py](file:///G:/Projetos/Tools/SocialMediaDownloader/backend/main.py)
-API FastAPI principal:
-- Endpoints REST para downloads
-- CORS configurado para localhost
-- Gerenciamento de sessões de download
-- SSE (Server-Sent Events) para progresso em tempo real
+#### [REMOVED] backend/main.py
+(historical: HTTP API servida pelo backend Python; removida em F0)
 
 #### [NEW] [backend/models.py](file:///G:/Projetos/Tools/SocialMediaDownloader/backend/models.py)
 Modelos Pydantic:
@@ -67,33 +59,13 @@ Validações de URL:
 
 ---
 
-### Docker
+### Docker (histórico — removido em F0; mantido apenas como referência)
 
-#### [NEW] [backend/Dockerfile](file:///G:/Projetos/Tools/SocialMediaDownloader/backend/Dockerfile)
-```dockerfile
-FROM python:3.11-slim
-RUN apt-get update && apt-get install -y ffmpeg
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+#### [REMOVED] backend/Dockerfile
+(removido em F0: sem container; o app é um binário Rust único)
 
-#### [NEW] [docker-compose.yml](file:///G:/Projetos/Tools/SocialMediaDownloader/docker-compose.yml)
-```yaml
-version: '3.8'
-services:
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./downloads:/downloads
-    environment:
-      - DOWNLOAD_PATH=/downloads
-```
+#### [REMOVED] container orchestration manifest
+(removido em F0 junto com o Docker)
 
 ---
 
@@ -109,7 +81,7 @@ edition = "2021"
 [dependencies]
 eframe = "0.25"
 egui = "0.25"
-reqwest = { version = "0.11", features = ["json"] }
+tracing = "0.1" (logs go to the integrated Console tab, never to an external terminal)
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -242,22 +214,11 @@ Request: {"default_path": "D:/Videos", "temporary": false}
 Response: {"success": true}
 ```
 
-## Verification Plan
+## Verification Plan (histórico — fluxo de dois terminais e Docker removidos em F0)
 
-### Desenvolvimento Local
+### Processo único (direção atual)
 ```bash
-# Terminal 1: Backend Python
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-
-# Terminal 2: Frontend Rust
-cargo run
-```
-
-### Docker
-```bash
-docker-compose up --build
+# Terminal único: binário Rust
 cargo run
 ```
 

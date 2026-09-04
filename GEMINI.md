@@ -2,6 +2,8 @@
 
 Este arquivo define as regras de conduta e convenções técnicas que o Antigravity (IA) deve seguir neste projeto para garantir assertividade e evitar suposições.
 
+> Direção atual (F0, issue #2): o app está migrando para um **binário Rust único** — o backend Python, a camada HTTP, o Docker e as janelas de terminal separadas foram removidos. Detalhes nos GitHub issues #1–#10; este arquivo será atualizado conforme a migração avança.
+
 ## Regras de Conduta (Anti-Suposições)
 
 1. **PROVA ANTES DA AÇÃO**: Antes de propor ou implementar uma solução para um erro, use ferramentas (`ls`, `run_command`, `view_file`) para verificar a existência de arquivos, tamanhos de binários e estruturas de diretórios. Nunca suponha que um arquivo "deve estar lá" ou que um path padrão de ferramenta (ex: /resources) existe sem checar.
@@ -12,6 +14,5 @@ Este arquivo define as regras de conduta e convenções técnicas que o Antigrav
 
 ## Estrutura Técnica de Referência
 
-- **Frontend**: Rust (egui/eframe). Deve rodar como aplicação de console para visibilidade de logs durante o debug do instalador.
-- **Backend**: Python (PyInstaller --onefile). Deve ser lançado pelo Rust via `Command` ou `cmd /C start`.
-- **Instalador**: Gerado via `cargo packager`. Deve obrigatoriamente incluir o binário do backend (`smd-backend.exe`) como recurso.
+- **App**: Rust (egui/eframe) em processo único. Deve rodar como aplicação de console para visibilidade de logs durante o debug do instalador.
+- **Instalador**: Gerado via `cargo packager` a partir do binário Rust único.
