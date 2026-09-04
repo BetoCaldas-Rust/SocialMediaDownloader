@@ -1,3 +1,7 @@
+//! Release builds hide the terminal window entirely (all logs go to
+//! the in-app Console tab); debug builds keep it for `cargo run`.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod core;
 mod features;
 mod hotkey;
