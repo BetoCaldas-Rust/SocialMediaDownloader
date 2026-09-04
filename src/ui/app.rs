@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use egui::Context;
 
-use crate::core::intent::AppIntent;
+use crate::core::intent::{AppIntent, VideoIntent};
 use crate::core::state::Screen;
 use crate::core::store::Store;
 use crate::features::shared::sidebar;
 use crate::features::{channel, console, history, settings, transcript, video};
+use crate::hotkey::CaptureHotkey;
 use crate::i18n::registry::t;
 use crate::services::json_history::JsonHistoryStore;
 use crate::services::locale::LocaleService;
@@ -20,6 +21,7 @@ use crate::ui::theme::{apply_custom_theme, configure_fonts};
 
 pub struct SmdApp {
     store: Store,
+    capture: Option<CaptureHotkey>,
 }
 
 impl SmdApp {
@@ -31,7 +33,7 @@ impl SmdApp {
         apply_custom_theme(&creation.egui_ctx);
         configure_fonts(&creation.egui_ctx);
         let log_sink = Arc::new(BufferLogSink);
-        let store = Store::new(
+        let mut store = Store::new(
             Arc::new(LocaleService),
             log_sink.clone(),
             Arc::new(YtDlpMetadataProvider::new(log_sink.clone())),
@@ -42,8 +44,39 @@ impl SmdApp {
             config,
             level_handle,
         );
+        if crate::i18n::registry::available_locales().is_empty() {
+            tracing::error!(target: "startup", "no translation files found");
+            store.dispatch(AppIntent::PushNotice {
+                key: "notice_locales_missing".to_string(),
+                detail: "locales/".to_string(),
+            });
+        }
+        let capture = match CaptureHotkey::register() {
+            Some(listener) => {
+                tracing::info!(target: "startup", "global hotkey Win+Shift+X armed");
+                Some(listener)
+            }
+            None => {
+                tracing::warn!(target: "startup", "global hotkey unavailable");
+                None
+            }
+        };
         tracing::info!(target: "startup", "ui ready");
-        Self { store }
+        Self { store, capture }
+    }
+
+    fn capture_url_from_clipboard(&mut self) {
+        let text = arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.get_text())
+            .unwrap_or_default();
+        let url = text.trim();
+        if url.starts_with("http://") || url.starts_with("https://") {
+            self.store.dispatch(AppIntent::Navigate(Screen::Video));
+            self.store
+                .dispatch(AppIntent::Video(VideoIntent::SetUrl(url.to_string())));
+        } else {
+            tracing::info!(target: "hotkey", "clipboard holds no URL");
+        }
     }
 
     fn render_notices(&mut self, ui: &mut egui::Ui) {
@@ -77,6 +110,9 @@ impl SmdApp {
 impl eframe::App for SmdApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.store.drain_pending();
+        if self.capture.as_ref().is_some_and(|capture| capture.triggered()) {
+            self.capture_url_from_clipboard();
+        }
         if self.store.is_busy() {
             ctx.request_repaint();
         }

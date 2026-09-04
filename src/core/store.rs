@@ -49,6 +49,10 @@ pub fn update(state: &mut AppState, intent: &AppIntent) -> Vec<Effect> {
             state.notices.retain(|notice| notice.id != *id);
             Vec::new()
         }
+        AppIntent::PushNotice { key, detail } => {
+            push_notice(state, key, detail.clone());
+            Vec::new()
+        }
         AppIntent::Video(inner) => {
             let mut effects = video::update::apply(&mut state.video, inner);
             if let VideoIntent::DownloadFinished(Ok(ticket)) = inner {
@@ -392,7 +396,7 @@ impl Store {
         }
         if let Some(writer) = self.log_file.as_mut() {
             let line = serde_json::json!({
-                "ts": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                "ts": chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
                 "level": level.label(),
                 "source": source,
                 "message": message,
@@ -1031,6 +1035,20 @@ mod tests {
             },
         ))));
         assert!(store.state().notices.is_empty());
+    }
+
+    #[test]
+    fn push_notice_adds_dismissible_entry() {
+        let mut store = test_store();
+        store.dispatch(AppIntent::PushNotice {
+            key: "notice_locales_missing".to_string(),
+            detail: "locales/".to_string(),
+        });
+        assert_eq!(store.state().notices.len(), 1);
+        assert_eq!(
+            store.state().notices[0].message_key,
+            "notice_locales_missing"
+        );
     }
 
     #[test]

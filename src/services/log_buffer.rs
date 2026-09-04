@@ -46,7 +46,7 @@ fn buffer() -> &'static RwLock<VecDeque<LogEntry>> {
 }
 
 fn stamp() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
 }
 
 pub fn push_log(level: LogLevel, source: &str, message: &str) {

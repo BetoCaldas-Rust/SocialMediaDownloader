@@ -1,5 +1,7 @@
 # Social Media Downloader - Task Breakdown
 
+> CONCLUÍDO (F0–F8, issues #1–#10 fechadas): o conteúdo abaixo é o plano histórico da era Python+Rust, preservado para referência. O app atual é um binário Rust único — ver README.md.
+
 > Direção atual (F0, issue #2): o app está migrando para um **binário Rust único** — o backend Python, a camada HTTP, o Docker e as janelas de terminal separadas foram removidos. Os itens de backend/Docker abaixo estão cancelados e mantidos apenas como histórico; o trabalho ativo está nos GitHub issues #1–#10.
 
 ## Planning Phase

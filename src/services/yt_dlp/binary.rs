@@ -24,8 +24,10 @@ pub fn hidden_command(program: &PathBuf) -> tokio::process::Command {
 
 /// Lookup order (first hit wins):
 /// 1. `resources/bin/` next to the running exe (dev: `<repo>/resources/bin/`)
-/// 2. `%APPDATA%\SMD\updates\` (F8 self-update drop zone)
-/// 3. `yt-dlp` on PATH
+/// 2. `bin/` next to the running exe (installed layout from cargo-packager)
+/// 3. exe name next to the running exe
+/// 4. `%APPDATA%\SMD\updates\` (F8 self-update drop zone)
+/// 5. `yt-dlp` on PATH
 pub fn resolve_binary() -> Result<PathBuf, String> {
     for candidate in candidates() {
         if candidate.is_file() {
@@ -40,6 +42,7 @@ fn candidates() -> Vec<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             out.push(dir.join("resources").join("bin").join(exe_name()));
+            out.push(dir.join("bin").join(exe_name()));
             out.push(dir.join(exe_name()));
         }
     }
@@ -73,5 +76,11 @@ mod tests {
         if let Err(key) = result {
             assert_eq!(key, SIDECAR_MISSING_KEY);
         }
+    }
+
+    #[test]
+    fn installed_bin_dir_is_candidate() {
+        let wanted = std::path::Path::new("bin").join(exe_name());
+        assert!(candidates().iter().any(|path| path.ends_with(&wanted)));
     }
 }

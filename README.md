@@ -1,6 +1,6 @@
 # 📥 Social Media Downloader
 
-> Direção atual (F0, issue #2): o app está migrando para um **binário Rust único** — o backend Python, a camada HTTP, o Docker e as janelas de terminal separadas foram removidos. Detalhes nos GitHub issues #1–#10.
+> App consolidado como **binário Rust único** (F0–F8, issues #1–#10 fechadas): sem backend Python, sem HTTP localhost, sem Docker, sem janelas de terminal. Interface com sidebar em 6 telas (Vídeo, Transcrição, Canal, Histórico, Console, Configurações), i18n EN-US/PT-BR via arquivos externos e logs integrados na aba Console.
 
 Aplicativo desktop multiplataforma para download de vídeos de redes sociais: um único binário Rust com GUI nativa que executa os downloads diretamente.
 
@@ -16,21 +16,24 @@ Aplicativo desktop multiplataforma para download de vídeos de redes sociais: um
 
 ### ⚙️ Como funciona
 
-1. O **app Rust** (`src/main.rs`) abre uma janela nativa 800×600 em um processo único
-2. O usuário cola uma URL (YouTube, Instagram, TikTok, Twitter, etc.) no campo de input
+1. O **app Rust** (`src/main.rs`) abre uma janela nativa 1120×780 em um processo único
+2. O usuário cola uma URL (YouTube, Instagram, TikTok, Twitter, etc.) no campo de input (ou aperta **Win+Shift+X** com uma URL no clipboard)
 3. O app executa o download diretamente e mostra o progresso em tempo real
 
 ### ✨ Funcionalidades principais
 
-- 🎬 Downloads de **1000+ sites** via yt-dlp
+- 🎬 Downloads de **1000+ sites** via sidecar yt-dlp (oculto, sem terminal)
+- 📄 Transcrições/legendas (SRT/VTT/TXT, com fallback de idioma) — YouTube
+- 📺 Lotes por canal com filtro de período
 - 📋 Hotkey global **Win+Shift+X** para capturar URL do clipboard
-- 🔒 Suporte a **cookies do navegador** (para vídeos de membros/conteúdo privado)
 - 📂 **Abre a pasta** no Explorer após o download
-- ⚙️ Configuração de pasta de destino
+- ⚙️ 5 grupos de configuração (downloads, transcrição, app, idioma, sistema/logs)
+- 🌍 EN-US/PT-BR trocáveis sem restart (novos idiomas = soltar um `.toml`, sem recompilar)
+- 📟 Console integrada com filtros, busca, pause e exportação
 
 ### 📦 Distribuição
 
-O app é empacotado como um instalador Windows (via `cargo-packager`) a partir do binário Rust único (`social-media-downloader.exe`) — versão atual: **v1.0.14**. (TODO F8: empacotar o sidecar `resources/bin/yt-dlp`.)
+O app é empacotado como um instalador Windows (via `cargo-packager`) a partir do binário Rust único (`social-media-downloader.exe`) + sidecar `resources/bin/yt-dlp` + `locales/` — versão atual: **v1.0.15**. Sem o sidecar, o app abre normalmente e explica como obtê-lo (`tools/fetch-ytdlp.ps1` ou Configurações → Sistema).
 
 ---
 
@@ -133,15 +136,19 @@ cargo run
 ```
 SocialMediaDownloader/
 │
-├── src/                          # 🦀 App Rust
+├── src/                          # 🦀 App Rust (padrão MVI)
 │   ├── main.rs                   # Entry point
-│   ├── api/
-│   │   ├── client.rs            # Download client (sem camada HTTP externa)
-│   │   └── models.rs            # Modelos internos
-│   └── ui/
-│       ├── app.rs               # Main GUI app
-│       └── theme.rs             # Black/yellow theme
+│   ├── hotkey.rs                 # Win+Shift+X global
+│   ├── core/                     # state/intent/effect/store (reducer puro)
+│   ├── features/                 # video/transcript/channel/history/console/settings + shared sidebar
+│   ├── services/                 # traits + yt_dlp sidecar + json_history + log_buffer + autostart
+│   ├── i18n/                     # loader/registry (runtime, sem recompilar)
+│   ├── storage/                  # config.json versionado
+│   └── ui/                       # app shell + theme
 │
+├── locales/                      # en-US.toml, pt-BR.toml (empacotados; drop-in p/ novos idiomas)
+├── resources/bin/                # yt-dlp sidecar (baixado via tools/fetch-ytdlp.*, git-ignored)
+├── tools/                        # fetch-ytdlp.ps1/.sh
 ├── Cargo.toml                    # Rust dependencies
 ├── setup.bat                     # Windows setup script
 ├── setup.sh                      # Linux/Mac setup script
@@ -171,14 +178,32 @@ Texto:
 
 ## 📊 Onde os Vídeos São Salvos
 
+Padrão (alterável em Configurações → Downloads):
+
 ```
 ~/Downloads/SocialMediaDownloader/
-├── youtube/          # Vídeos do YouTube
-├── instagram/        # Vídeos do Instagram
-├── tiktok/          # Vídeos do TikTok
-├── twitter/         # Vídeos do Twitter
-└── outros/          # Outras plataformas
+├── <canal>/          # com "organizar por canal" (padrão)
+└── ...
 ```
+
+## 💾 Onde o App Guarda Seus Dados
+
+Tudo em `%APPDATA%/SMD/` (Windows):
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| `config.json` | Todas as preferências (versionado, tolerante a campos novos) |
+| `history.json` | Histórico de downloads/transcrições (máx. 500) |
+| `logs/YYYY-MM-DD.log` | Logs em JSON lines, só se "salvar logs" ligado (mantém 7 dias) |
+| `updates/yt-dlp.exe` | Destino alternativo do sidecar (auto-update) |
+
+## 🌍 Como Adicionar um Idioma
+
+Sem recompilar: copie `locales/en-US.toml` para `locales/<codigo>.toml` (ex: `fr-FR.toml`), traduza os valores e reinicie o app — o idioma aparece no dropdown de Configurações. Chaves ausentes usam o inglês com aviso no Console.
+
+## 📦 Sidecar yt-dlp
+
+Provisione com `tools/fetch-ytdlp.ps1` (ou `.sh` no Linux). No app instalado ele viaja em `bin/` ao lado do exe; a ordem de busca é: `resources/bin/` (dev) → `bin/` ao lado do exe (instalado) → `%APPDATA%/SMD/updates/` → `PATH`. Atualize por Configurações → Sistema → yt-dlp.
 
 ## 🔌 API interna
 
@@ -212,28 +237,19 @@ O executável estará em `target/release/social-media-downloader`
 
 ## 🔧 Configuração
 
-As configurações são salvas em `config.json` na pasta do app:
-
-```json
-{
-  "default_path": "C:/Users/Usuario/Downloads/SocialMediaDownloader",
-  "platform_paths": {
-    "youtube": "D:/Videos/YouTube"
-  },
-  "temporary": false
-}
-```
+As preferências ficam em `%APPDATA%/SMD/config.json` (criado no primeiro uso, com defaults + migração tolerante) e são editadas na tela Configurações: Downloads, Transcrição, Aplicativo, Idioma, Sistema & logs. Mudanças aplicam na hora, sem restart.
 
 ## 📈 Status do Projeto
 
-| Componente | Status | Completude |
-|------------|--------|------------|
-| App Rust (binário único) | 🚧 Em migração (issues #1–#10) | — |
-| GUI Tema | ✅ Completo | 100% |
-| Progress Tracking | ✅ Completo | 100% |
-| Hotkeys | ⏳ Pendente | 0% |
-| Settings UI | ⏳ Pendente | 0% |
-| Clipboard | ⏳ Pendente | 0% |
+| Componente | Status |
+|------------|--------|
+| App Rust (binário único, MVI) | ✅ Completo (F0–F8) |
+| Telas Vídeo/Transcrição/Canal/Histórico/Console/Configurações | ✅ Completas |
+| Hotkey Win+Shift+X + clipboard | ✅ Completo |
+| i18n runtime (EN/PT + drop-in) | ✅ Completo |
+| Empacotamento (instalador + sidecar + locales) | ✅ Completo |
+
+Limitações conhecidas: sem ícone de bandeja real (toggle persiste; exige crate de tray), sem toast de SO (notificações são in-app), sem suporte a cookies/login (apenas conteúdo público), sem tema claro.
 
 ## ⚠️ Troubleshooting
 
@@ -272,27 +288,13 @@ cargo clean
 cargo build
 ```
 
-## 🎯 Próximos Passos
+## 🎯 Próximos Passos (pós-F8)
 
-### Features Pendentes
-
-- [ ] **Global Hotkey** (Win+Shift+X) usando `global-hotkey` crate
-- [ ] **Clipboard Monitoring** automático
-- [ ] **Settings Panel** no frontend
-- [ ] **File Browser** para escolher pasta de download
-- [ ] **Download History** persistente
-- [ ] **Platform Icons** na lista de downloads
-- [ ] **Drag & Drop** de URLs
-
-### Melhorias Sugeridas
-
-- [ ] Autenticação para sites privados
-- [ ] Download de playlists completas
-- [ ] Seleção de qualidade (720p, 1080p, 4K)
-- [ ] Conversão de formatos
+- [ ] Ícone de bandeja real (exige crate de tray + integração winit)
+- [ ] Suporte a cookies/login (conteúdo privado/membros)
 - [ ] Tema claro como opção
-- [ ] Notificações do sistema
-- [ ] Tradução para outros idiomas
+- [ ] Notificações do sistema (toast do SO)
+- [ ] Virtualização da lista de logs (5000 linhas/frame)
 
 ## 🏆 Features Implementadas
 

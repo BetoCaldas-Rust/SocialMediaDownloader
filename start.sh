@@ -32,6 +32,11 @@ run_app() {
     fi
 
     echo ""
+    if [ ! -f "resources/bin/yt-dlp" ]; then
+        echo "[AVISO] sidecar yt-dlp ausente em resources/bin. Downloads reais exigem:"
+        echo "  ./tools/fetch-ytdlp.sh"
+        echo ""
+    fi
     echo "Iniciando app (processo único)..."
     cargo run
 }

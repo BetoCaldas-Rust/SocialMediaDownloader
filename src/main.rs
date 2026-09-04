@@ -1,5 +1,6 @@
 mod core;
 mod features;
+mod hotkey;
 mod i18n;
 mod services;
 mod storage;

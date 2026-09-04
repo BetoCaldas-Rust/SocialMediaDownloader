@@ -29,10 +29,10 @@ identifier = "com.betocaldas.smd"
 version = "1.0.15"
 authors = ["Beto Caldas"]
 publisher = "Beto Caldas"
-description = "Baixe vÃ­deos de diversas redes sociais."
+description = "Baixe vídeos de diversas redes sociais."
 icons = ["icons/icon.png"]
 out-dir = "dist"
-resources = ["locales/"]
+resources = ["locales/", "resources/bin/"]
 
 [[package.metadata.packager.binaries]]
 path = "social-media-downloader.exe"

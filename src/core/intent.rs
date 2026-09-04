@@ -134,4 +134,5 @@ pub enum AppIntent {
     Console(ConsoleIntent),
     Settings(SettingsIntent),
     DismissNotice(String),
+    PushNotice { key: String, detail: String },
 }

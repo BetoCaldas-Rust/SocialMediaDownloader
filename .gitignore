@@ -21,6 +21,10 @@ social_media_downloader_backend.egg-info/
 config.json
 downloads/
 
+# yt-dlp sidecar binary (provisioned via tools/fetch-ytdlp.*; see resources/bin/README.md)
+resources/bin/yt-dlp*.exe
+resources/bin/yt-dlp
+
 # IDEs
 .vscode/
 .idea/

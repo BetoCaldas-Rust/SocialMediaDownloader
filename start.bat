@@ -48,6 +48,11 @@ if %errorlevel% neq 0 (
 )
 
 echo.
+if not exist "resources\bin\yt-dlp.exe" (
+    echo [AVISO] yt-dlp.exe ausente em resources\bin. Downloads reais exigem o sidecar:
+    echo   powershell -ExecutionPolicy Bypass -File tools\fetch-ytdlp.ps1
+    echo.
+)
 echo Iniciando app (processo unico)...
 cargo run
 

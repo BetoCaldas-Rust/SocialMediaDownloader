@@ -31,10 +31,15 @@ REM 3. Atualizar Arquivos
 echo [1/2] Atualizando Cargo.toml...
 powershell -Command "$v = '!NEW_VERSION!'; $c = Get-Content Cargo.toml -Raw -Encoding utf8; $c = $c -replace '(?s)(\[package\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); $c = $c -replace '(?s)(\[package\.metadata\.packager\].*?version\s*=\s*\").*?(\")', ('${1}' + $v + '${2}'); [System.IO.File]::WriteAllText('Cargo.toml', $c, (New-Object System.Text.UTF8Encoding($false)))"
 
-REM TODO(F8): bundle resources/bin/yt-dlp sidecar (o build do backend via PyInstaller foi removido em F0)
+REM 3. Sidecar yt-dlp (tolerates offline: app shows a guided error without it)
+echo [1/3] Provisionando yt-dlp sidecar...
+powershell -ExecutionPolicy Bypass -File tools\fetch-ytdlp.ps1
+if %errorlevel% neq 0 (
+    echo [AVISO] Falha ao baixar yt-dlp (offline?). O instalador seguira sem o sidecar.
+)
 
 REM 4. Build Installer
-echo [2/2] Compilando app e Gerando Instalador...
+echo [2/3] Compilando app...
 cargo build --release
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao compilar o app!
@@ -42,6 +47,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+echo [3/3] Gerando instalador...
 cargo packager --release
 if %errorlevel% neq 0 (
     echo [ERRO] Falha ao gerar instalador!

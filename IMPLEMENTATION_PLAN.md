@@ -1,5 +1,7 @@
 # Social Media Downloader - Implementation Plan
 
+> CONCLUÍDO (F0–F8, issues #1–#10 fechadas): este documento descreve a arquitetura histórica híbrida Rust+Python, substituída pelo binário Rust único (MVI + sidecar yt-dlp + i18n runtime). Preservado para referência — ver README.md.
+
 > Direção atual (F0, issue #2): este plano descrevia uma arquitetura híbrida Rust + Python que foi **substituída por um binário Rust único** — o backend Python, a camada HTTP, o Docker e as janelas de terminal separadas foram removidos. O conteúdo abaixo é histórico; o trabalho ativo está nos GitHub issues #1–#10.
 
 Aplicativo desktop para download de vídeos de redes sociais (plano histórico: ~~GUI nativa em Rust + Backend REST API em Python com suporte a Docker~~; direção atual: binário Rust único).
