@@ -7,12 +7,13 @@ use tokio::task::JoinHandle;
 
 use super::effect::Effect;
 use super::intent::{AppIntent, ChannelIntent, TranscriptIntent, VideoIntent};
-use super::state::{AppState, TranscriptStatus, VideoStatus};
+use super::state::{AppState, Screen, TranscriptStatus, VideoStatus};
 use crate::features::{channel, console, history, settings, transcript, video};
 use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{
-    BatchItem, ChannelOrder, ChannelProvider, DownloadOrder, DownloadProgress, Downloader,
-    LocaleProvider, LogSink, MetadataProvider, Transcriber, TranscriptOrder, VideoQuality,
+    retry_plan, BatchItem, ChannelOrder, ChannelProvider, DownloadOrder, DownloadProgress,
+    Downloader, HistoryEntry, HistoryStore, LocaleProvider, LogSink, MetadataProvider, Transcriber,
+    TranscriptOrder, VideoQuality,
 };
 use crate::services::yt_dlp::downloader::default_download_dir;
 
@@ -50,9 +51,15 @@ pub fn update(state: &mut AppState, intent: &AppIntent) -> Vec<Effect> {
                     *transcript = transcript::update::order_from(&state.transcript);
                 }
             }
+            if let Some(order) = effects.iter().find_map(|effect| match effect {
+                Effect::DownloadBatch { transcript, .. } => Some(transcript.clone()),
+                _ => None,
+            }) {
+                state.channel.last_transcript_order = Some(order);
+            }
             effects
         }
-        AppIntent::History(inner) => history::update::apply(&mut state.history, inner),
+        AppIntent::History(inner) => history::update::apply(&mut state.history, inner, &[]),
         AppIntent::Console(inner) => console::update::apply(&mut state.console, inner),
         AppIntent::Settings(inner) => settings::update::apply(&mut state.settings, inner),
     }
@@ -66,6 +73,7 @@ pub struct Store {
     downloader: Arc<dyn Downloader>,
     transcriber: Arc<dyn Transcriber>,
     channel: Arc<dyn ChannelProvider>,
+    history: Arc<dyn HistoryStore>,
     runtime: Option<Arc<Runtime>>,
     intent_tx: UnboundedSender<AppIntent>,
     intent_rx: UnboundedReceiver<AppIntent>,
@@ -82,6 +90,7 @@ impl Store {
         downloader: Arc<dyn Downloader>,
         transcriber: Arc<dyn Transcriber>,
         channel: Arc<dyn ChannelProvider>,
+        history: Arc<dyn HistoryStore>,
     ) -> Self {
         let state = AppState {
             locale: locale_provider.current(),
@@ -96,6 +105,7 @@ impl Store {
             downloader,
             transcriber,
             channel,
+            history,
             runtime: build_runtime(),
             intent_tx,
             intent_rx,
@@ -123,7 +133,25 @@ impl Store {
         ) || self.state.channel.status.is_busy()
     }
 
+    pub fn history_entries(&self) -> Vec<HistoryEntry> {
+        self.history.entries()
+    }
+
+    pub fn history_count(&self) -> usize {
+        self.history.len()
+    }
+
+    pub fn history_totals(&self) -> crate::features::history::update::HistoryTotals {
+        crate::features::history::update::totals(&self.history.entries())
+    }
+
     pub fn dispatch(&mut self, intent: AppIntent) {
+        if let AppIntent::History(inner) = &intent {
+            let entries = self.history.entries();
+            let effects = history::update::apply(&mut self.state.history, inner, &entries);
+            self.execute(&effects);
+            return;
+        }
         let effects = update(&mut self.state, &intent);
         self.execute(&effects);
     }
@@ -186,6 +214,42 @@ impl Store {
                     transcript.clone(),
                 ),
                 Effect::RevealInFolder(path) => reveal_in_folder(path, &self.log_sink),
+                Effect::RecordHistory(entry) => {
+                    self.history.record((**entry).clone());
+                }
+                Effect::RetryEntry(entry) => self.exec_retry((**entry).clone()),
+                Effect::ClearHistory => {
+                    self.history.clear();
+                }
+            }
+        }
+    }
+
+    fn exec_retry(&mut self, entry: HistoryEntry) {
+        match retry_plan(&entry) {
+            crate::services::traits::RetryPlan::Video { url } => {
+                self.state.video.url = url.clone();
+                self.state.video.status = VideoStatus::Downloading;
+                self.state.video.progress = 0.0;
+                self.state.video.speed = None;
+                self.state.video.eta = None;
+                self.state.video.error_key = None;
+                self.state.screen = Screen::Video;
+                let quality = self.state.video.quality;
+                self.spawn_download(url, quality);
+            }
+            crate::services::traits::RetryPlan::Transcript { order } => {
+                self.state.transcript.input = order.url.clone();
+                self.state.transcript.lang = order.lang.clone();
+                self.state.transcript.format = order.format;
+                self.state.transcript.fallback =
+                    order.fallback.clone().unwrap_or_else(|| "off".to_string());
+                self.state.transcript.accept_auto = order.accept_auto;
+                self.state.transcript.timestamps = order.timestamps;
+                self.state.transcript.error = None;
+                self.state.transcript.status = TranscriptStatus::Resolving;
+                self.state.screen = Screen::Transcript;
+                self.spawn_transcript(order);
             }
         }
     }
@@ -427,7 +491,8 @@ mod tests {
     use crate::services::locale::LocaleService;
     use crate::services::log_sink::BufferLogSink;
     use crate::services::stubs::{
-        StubChannelProvider, StubDownloader, StubMetadataProvider, StubTranscriber,
+        StubChannelProvider, StubDownloader, StubHistoryStore, StubMetadataProvider,
+        StubTranscriber,
     };
 
     fn test_store() -> Store {
@@ -438,6 +503,7 @@ mod tests {
             Arc::new(StubDownloader),
             Arc::new(StubTranscriber),
             Arc::new(StubChannelProvider),
+            Arc::new(StubHistoryStore::default()),
         )
     }
 
@@ -536,5 +602,51 @@ mod tests {
             "https://example.com/v".to_string()
         );
         assert!(store.state().transcript.status.is_busy());
+        assert_eq!(store.history_count(), 1);
+    }
+
+    #[test]
+    fn history_retry_missing_id_warns_without_navigation() {
+        use crate::core::intent::HistoryIntent;
+        let mut store = test_store();
+        store.dispatch(AppIntent::History(HistoryIntent::RetryEntry(
+            "missing-id".to_string(),
+        )));
+        assert_eq!(store.state().screen, Screen::Video);
+        assert!(store.history_entries().is_empty());
+    }
+
+    #[test]
+    fn history_clear_round_trip() {
+        use crate::core::intent::HistoryIntent;
+        use crate::services::traits::{EntryKind, EntryStatus, HistoryEntry, HistoryStore};
+        let history = Arc::new(StubHistoryStore::default());
+        history.record(HistoryEntry {
+            id: "e1".to_string(),
+            kind: EntryKind::Video,
+            name: "Video".to_string(),
+            source: "example.com".to_string(),
+            url: "https://example.com/v".to_string(),
+            detail: None,
+            finished_at_ms: 1,
+            size_bytes: None,
+            status: EntryStatus::Completed,
+            error: None,
+            path: None,
+            transcript_order: None,
+        });
+        let mut store = Store::new(
+            Arc::new(LocaleService),
+            Arc::new(BufferLogSink),
+            Arc::new(StubMetadataProvider),
+            Arc::new(StubDownloader),
+            Arc::new(StubTranscriber),
+            Arc::new(StubChannelProvider),
+            history,
+        );
+        assert_eq!(store.history_count(), 1);
+        store.dispatch(AppIntent::History(HistoryIntent::RequestClear));
+        store.dispatch(AppIntent::History(HistoryIntent::ClearHistory));
+        assert!(store.history_entries().is_empty());
     }
 }

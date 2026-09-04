@@ -19,7 +19,14 @@ pub fn render(ui: &mut Ui, store: &mut Store) {
 }
 
 fn render_nav_item(ui: &mut Ui, store: &mut Store, screen: Screen, selected: bool) {
-    if ui.selectable_label(selected, t(screen.nav_key())).clicked() {
+    let mut label = t(screen.nav_key());
+    if screen == Screen::History {
+        let count = store.history_count();
+        if count > 0 {
+            label = format!("{label} ({count})");
+        }
+    }
+    if ui.selectable_label(selected, label).clicked() {
         store.dispatch(AppIntent::Navigate(screen));
     }
 }

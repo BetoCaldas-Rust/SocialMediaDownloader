@@ -6,6 +6,7 @@ use crate::core::state::Screen;
 use crate::core::store::Store;
 use crate::features::shared::sidebar;
 use crate::features::{channel, console, history, settings, transcript, video};
+use crate::services::json_history::JsonHistoryStore;
 use crate::services::locale::LocaleService;
 use crate::services::log_sink::BufferLogSink;
 use crate::services::yt_dlp::{
@@ -29,6 +30,7 @@ impl SmdApp {
             Arc::new(YtDlpDownloader::new(log_sink.clone())),
             Arc::new(YtDlpTranscriber::new(log_sink.clone())),
             Arc::new(YtDlpChannelProvider::new(log_sink)),
+            Arc::new(JsonHistoryStore::load()),
         );
         tracing::info!(target: "startup", "ui ready");
         Self { store }

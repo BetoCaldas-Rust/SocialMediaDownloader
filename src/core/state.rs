@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 
 use crate::services::traits::{
-    ChannelPreview, Container, TranscriptFormat, TranscriptResult, VideoMetadata, VideoQuality,
+    ChannelPreview, Container, TranscriptFormat, TranscriptOrder, TranscriptResult, VideoMetadata,
+    VideoQuality,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -217,6 +218,7 @@ pub struct ChannelState {
     pub selected: Vec<bool>,
     pub items: Vec<BatchItemState>,
     pub error_key: Option<String>,
+    pub last_transcript_order: Option<TranscriptOrder>,
 }
 
 impl Default for ChannelState {
@@ -239,14 +241,68 @@ impl Default for ChannelState {
             selected: Vec::new(),
             items: Vec::new(),
             error_key: None,
+            last_transcript_order: None,
         }
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistoryFilter {
+    #[default]
+    All,
+    Videos,
+    Transcripts,
+    Failures,
+}
+
+impl HistoryFilter {
+    pub fn locale_key(self) -> &'static str {
+        match self {
+            HistoryFilter::All => "history_filter_all",
+            HistoryFilter::Videos => "history_filter_videos",
+            HistoryFilter::Transcripts => "history_filter_transcripts",
+            HistoryFilter::Failures => "history_filter_failures",
+        }
+    }
+
+    pub fn ordered() -> [HistoryFilter; 4] {
+        [
+            HistoryFilter::All,
+            HistoryFilter::Videos,
+            HistoryFilter::Transcripts,
+            HistoryFilter::Failures,
+        ]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistorySort {
+    #[default]
+    Recent,
+    Largest,
+    Name,
+}
+
+impl HistorySort {
+    pub fn locale_key(self) -> &'static str {
+        match self {
+            HistorySort::Recent => "history_sort_recent",
+            HistorySort::Largest => "history_sort_largest",
+            HistorySort::Name => "history_sort_name",
+        }
+    }
+
+    pub fn ordered() -> [HistorySort; 3] {
+        [HistorySort::Recent, HistorySort::Largest, HistorySort::Name]
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HistoryState {
-    pub filter: String,
+    pub filter: HistoryFilter,
+    pub query: String,
+    pub sort: HistorySort,
+    pub confirm_clear: bool,
 }
 
 #[allow(dead_code)]

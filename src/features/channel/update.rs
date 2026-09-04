@@ -6,10 +6,15 @@ use crate::core::state::{
 };
 use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{
+    file_name, file_size, history_source, new_history_id, now_ms, EntryKind, EntryStatus,
+    HistoryEntry,
+};
+use crate::services::traits::{
     BatchItem, ChannelOrder, ChannelPreview, DownloadProgress, DownloadTicket, TranscriptOrder,
     TranscriptResult, VideoKind,
 };
 use crate::services::yt_dlp::channel::format_br_date;
+use crate::services::yt_dlp::transcript::parse_no_transcript_error;
 
 use super::intent::ChannelIntent;
 use super::model::{parse_br_date, preset_range, ChannelModel};
@@ -277,14 +282,160 @@ fn first_error(
     None
 }
 
+fn transcript_order_for(model: &ChannelModel, url: &str) -> TranscriptOrder {
+    model
+        .last_transcript_order
+        .clone()
+        .map(|order| TranscriptOrder {
+            url: url.to_string(),
+            ..order
+        })
+        .unwrap_or(TranscriptOrder {
+            url: url.to_string(),
+            ..Default::default()
+        })
+}
+
+fn transcript_detail(result: &TranscriptResult) -> String {
+    if result.auto_generated {
+        format!("[{}] (auto)", result.lang_used)
+    } else {
+        format!("[{}]", result.lang_used)
+    }
+}
+
+fn video_entry(
+    model: &ChannelModel,
+    url: &str,
+    title: &str,
+    result: &Result<DownloadTicket, String>,
+) -> HistoryEntry {
+    let channel = model.preview.as_ref().map(|preview| preview.name.as_str());
+    let source = history_source(channel, url);
+    match result {
+        Ok(ticket) => {
+            let name = match (title.trim().is_empty(), file_name(&ticket.path)) {
+                (false, _) => title.to_string(),
+                (true, Some(file)) => file,
+                (true, None) => url.to_string(),
+            };
+            HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Video,
+                name,
+                source,
+                url: url.to_string(),
+                detail: None,
+                finished_at_ms: now_ms(),
+                size_bytes: file_size(&ticket.path),
+                status: EntryStatus::Completed,
+                error: None,
+                path: Some(ticket.path.clone()),
+                transcript_order: None,
+            }
+        }
+        Err(key) => HistoryEntry {
+            id: new_history_id(),
+            kind: EntryKind::Video,
+            name: if title.trim().is_empty() {
+                url.to_string()
+            } else {
+                title.to_string()
+            },
+            source,
+            url: url.to_string(),
+            detail: None,
+            finished_at_ms: now_ms(),
+            size_bytes: None,
+            status: EntryStatus::Failed,
+            error: Some(key.clone()),
+            path: None,
+            transcript_order: None,
+        },
+    }
+}
+
+fn transcript_entry(
+    model: &ChannelModel,
+    url: &str,
+    title: &str,
+    result: &Result<TranscriptResult, String>,
+) -> HistoryEntry {
+    let channel = model.preview.as_ref().map(|preview| preview.name.as_str());
+    let source = history_source(channel, url);
+    let order = transcript_order_for(model, url);
+    match result {
+        Ok(ticket) => {
+            let name = match (title.trim().is_empty(), file_name(&ticket.path)) {
+                (false, _) => title.to_string(),
+                (true, Some(file)) => file,
+                (true, None) => url.to_string(),
+            };
+            HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Transcript,
+                name,
+                source,
+                url: url.to_string(),
+                detail: Some(transcript_detail(ticket)),
+                finished_at_ms: now_ms(),
+                size_bytes: Some(ticket.size_bytes),
+                status: EntryStatus::Completed,
+                error: None,
+                path: Some(ticket.path.clone()),
+                transcript_order: Some(order),
+            }
+        }
+        Err(key) => {
+            let item_url = parse_no_transcript_error(key).unwrap_or_else(|| url.to_string());
+            HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Transcript,
+                name: if title.trim().is_empty() {
+                    item_url.clone()
+                } else {
+                    title.to_string()
+                },
+                source,
+                url: item_url,
+                detail: None,
+                finished_at_ms: now_ms(),
+                size_bytes: None,
+                status: EntryStatus::Failed,
+                error: Some(key.clone()),
+                path: None,
+                transcript_order: Some(order),
+            }
+        }
+    }
+}
+
 fn finish_item(
     model: &mut ChannelModel,
     index: usize,
     video: &Option<Result<DownloadTicket, String>>,
     transcript: &Option<Result<TranscriptResult, String>>,
 ) -> Vec<Effect> {
-    let Some(item) = model.items.get_mut(index) else {
+    let Some((url, title)) = model
+        .items
+        .get(index)
+        .map(|item| (item.url.clone(), item.title.clone()))
+    else {
         return Vec::new();
+    };
+    let mut effects = Vec::new();
+    if let Some(result) = video {
+        effects.push(Effect::RecordHistory(Box::new(video_entry(
+            model, &url, &title, result,
+        ))));
+    }
+    if let Some(result) = transcript {
+        effects.push(Effect::RecordHistory(Box::new(transcript_entry(
+            model, &url, &title, result,
+        ))));
+    }
+    let Some(item) = model.items.get_mut(index) else {
+        return effects;
     };
     let video_ok = video.as_ref().is_none_or(Result::is_ok);
     let transcript_ok = transcript.as_ref().is_none_or(Result::is_ok);
@@ -305,7 +456,7 @@ fn finish_item(
     if settled {
         model.status = ChannelStatus::Completed;
     }
-    Vec::new()
+    effects
 }
 
 fn cancel_batch(model: &mut ChannelModel) -> Vec<Effect> {

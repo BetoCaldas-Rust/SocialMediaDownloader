@@ -1,6 +1,10 @@
 use crate::core::effect::Effect;
 use crate::core::state::VideoStatus;
 use crate::services::log_buffer::LogLevel;
+use crate::services::traits::{
+    file_name, file_size, history_source, new_history_id, now_ms, EntryKind, EntryStatus,
+    HistoryEntry,
+};
 
 use super::intent::VideoIntent;
 use super::model::VideoModel;
@@ -153,9 +157,58 @@ fn finish_download(
             model.progress = 100.0;
             model.output_path = Some(ticket.path.clone());
             model.error_key = None;
-            Vec::new()
+            let url = model.url.trim().to_string();
+            let channel = model.metadata.as_ref().map(|meta| meta.channel.as_str());
+            let title = model
+                .metadata
+                .as_ref()
+                .map(|meta| meta.title.trim().to_string())
+                .unwrap_or_default();
+            let name = match (title.is_empty(), file_name(&ticket.path)) {
+                (false, _) => title,
+                (true, Some(file)) => file,
+                (true, None) => url.clone(),
+            };
+            vec![Effect::RecordHistory(Box::new(HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Video,
+                name,
+                source: history_source(channel, &url),
+                url,
+                detail: None,
+                finished_at_ms: now_ms(),
+                size_bytes: file_size(&ticket.path),
+                status: EntryStatus::Completed,
+                error: None,
+                path: Some(ticket.path.clone()),
+                transcript_order: None,
+            }))]
         }
-        Err(key) => fail(model, key),
+        Err(key) => {
+            let url = model.url.trim().to_string();
+            let channel = model.metadata.as_ref().map(|meta| meta.channel.clone());
+            let title = model
+                .metadata
+                .as_ref()
+                .map(|meta| meta.title.trim().to_string())
+                .unwrap_or_default();
+            let name = if title.is_empty() { url.clone() } else { title };
+            fail(model, key);
+            vec![Effect::RecordHistory(Box::new(HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Video,
+                name,
+                source: history_source(channel.as_deref(), &url),
+                url,
+                detail: None,
+                finished_at_ms: now_ms(),
+                size_bytes: None,
+                status: EntryStatus::Failed,
+                error: Some(key.clone()),
+                path: None,
+                transcript_order: None,
+            }))]
+        }
     }
 }
 
@@ -276,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn download_finished_completes_without_side_effects() {
+    fn download_finished_completes_with_history_effect() {
         let mut model = model_with_url();
         model.status = VideoStatus::Downloading;
         model.include_transcript = true;
@@ -289,6 +342,27 @@ mod tests {
         );
         assert_eq!(model.status, VideoStatus::Completed);
         assert_eq!(model.progress, 100.0);
-        assert!(effects.is_empty());
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::RecordHistory(entry)]
+            if entry.status == crate::services::traits::EntryStatus::Completed
+        ));
+    }
+
+    #[test]
+    fn download_failed_records_failed_entry() {
+        let mut model = model_with_url();
+        model.status = VideoStatus::Downloading;
+        let effects = apply(
+            &mut model,
+            &VideoIntent::DownloadFinished(Err("video_error_download".to_string())),
+        );
+        assert_eq!(model.status, VideoStatus::Failed);
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::RecordHistory(entry)]
+            if entry.status == crate::services::traits::EntryStatus::Failed
+                && entry.error.as_deref() == Some("video_error_download")
+        ));
     }
 }

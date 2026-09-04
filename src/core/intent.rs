@@ -1,4 +1,4 @@
-use super::state::{ChannelInclude, DatePreset, Screen};
+use super::state::{ChannelInclude, DatePreset, HistoryFilter, HistorySort, Screen};
 use crate::services::traits::{
     ChannelPreview, Container, DownloadProgress, DownloadTicket, TranscriptFormat,
     TranscriptResult, VideoKind, VideoMetadata, VideoQuality,
@@ -64,10 +64,17 @@ pub enum ChannelIntent {
     Dismiss,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum HistoryIntent {
-    SetFilter(String),
+    SetFilter(HistoryFilter),
+    SetQuery(String),
+    SetSort(HistorySort),
+    RequestClear,
+    CancelClear,
+    ClearHistory,
+    OpenDownloadsFolder,
+    RevealEntry(String),
+    RetryEntry(String),
 }
 
 #[allow(dead_code)]

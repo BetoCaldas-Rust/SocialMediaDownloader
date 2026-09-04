@@ -1,9 +1,12 @@
+use std::sync::RwLock;
+
 use tokio::sync::mpsc::UnboundedSender;
 
+use super::json_history::HISTORY_CAP;
 use super::traits::{
     ChannelOrder, ChannelPreview, ChannelProvider, DownloadOrder, DownloadProgress, DownloadTicket,
-    Downloader, HistoryStore, MetadataProvider, Transcriber, TranscriptOrder, TranscriptResult,
-    VideoMetadata,
+    Downloader, HistoryEntry, HistoryStore, MetadataProvider, Transcriber, TranscriptOrder,
+    TranscriptResult, VideoMetadata,
 };
 
 #[allow(dead_code)]
@@ -19,7 +22,10 @@ pub struct StubTranscriber;
 pub struct StubChannelProvider;
 
 #[allow(dead_code)]
-pub struct StubHistoryStore;
+#[derive(Default)]
+pub struct StubHistoryStore {
+    entries: RwLock<Vec<HistoryEntry>>,
+}
 
 #[async_trait::async_trait]
 impl MetadataProvider for StubMetadataProvider {
@@ -54,9 +60,30 @@ impl ChannelProvider for StubChannelProvider {
 }
 
 impl HistoryStore for StubHistoryStore {
-    fn entries(&self) -> Vec<String> {
-        Vec::new()
+    fn entries(&self) -> Vec<HistoryEntry> {
+        self.entries
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
-    fn record(&self, _entry: String) {}
+    fn record(&self, entry: HistoryEntry) {
+        if let Ok(mut guard) = self.entries.write() {
+            guard.push(entry);
+            if guard.len() > HISTORY_CAP {
+                let excess = guard.len() - HISTORY_CAP;
+                guard.drain(..excess);
+            }
+        }
+    }
+
+    fn clear(&self) {
+        if let Ok(mut guard) = self.entries.write() {
+            guard.clear();
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.entries.read().map(|guard| guard.len()).unwrap_or(0)
+    }
 }

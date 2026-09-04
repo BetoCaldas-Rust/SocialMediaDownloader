@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::services::log_buffer::LogLevel;
@@ -85,7 +87,7 @@ pub struct DownloadProgress {
     pub filename: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TranscriptFormat {
     #[default]
     Srt,
@@ -127,7 +129,7 @@ impl TranscriptFormat {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranscriptOrder {
     pub url: String,
     pub lang: String,
@@ -224,10 +226,122 @@ pub trait ChannelProvider: Send + Sync {
     async fn preview(&self, order: &ChannelOrder) -> Result<ChannelPreview, String>;
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum EntryKind {
+    #[default]
+    Video,
+    Transcript,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum EntryStatus {
+    #[default]
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub id: String,
+    pub kind: EntryKind,
+    pub name: String,
+    pub source: String,
+    pub url: String,
+    pub detail: Option<String>,
+    pub finished_at_ms: i64,
+    pub size_bytes: Option<u64>,
+    pub status: EntryStatus,
+    pub error: Option<String>,
+    pub path: Option<PathBuf>,
+    pub transcript_order: Option<TranscriptOrder>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RetryPlan {
+    Video { url: String },
+    Transcript { order: TranscriptOrder },
+}
+
+pub fn retry_plan(entry: &HistoryEntry) -> RetryPlan {
+    match entry.kind {
+        EntryKind::Video => RetryPlan::Video {
+            url: entry.url.clone(),
+        },
+        EntryKind::Transcript => RetryPlan::Transcript {
+            order: entry.transcript_order.clone().unwrap_or(TranscriptOrder {
+                url: entry.url.clone(),
+                ..Default::default()
+            }),
+        },
+    }
+}
+
+static HISTORY_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+pub fn new_history_id() -> String {
+    let millis = now_ms();
+    let counter = HISTORY_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("{millis}-{counter}")
+}
+
+pub fn now_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+pub fn file_size(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|meta| meta.len())
+}
+
+pub fn file_name(path: &Path) -> Option<String> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+}
+
+/// Prefers metadata channel/title context when available, else the URL
+/// host, else a dash placeholder.
+pub fn history_source(channel: Option<&str>, url: &str) -> String {
+    if let Some(context) = channel {
+        if !context.trim().is_empty() {
+            return context.trim().to_string();
+        }
+    }
+    url_host(url).unwrap_or_else(|| "—".to_string())
+}
+
+pub fn url_host(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let without_scheme = match trimmed.split_once("://") {
+        Some((_, rest)) => rest,
+        None => trimmed,
+    };
+    let mut host = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if let Some((_, after)) = host.rsplit_once('@') {
+        host = after.to_string();
+    }
+    if let Some((bare, _)) = host.split_once(':') {
+        host = bare.to_string();
+    }
+    if host.trim().is_empty() {
+        return None;
+    }
+    Some(host)
+}
+
 pub trait HistoryStore: Send + Sync {
-    fn entries(&self) -> Vec<String>;
-    fn record(&self, entry: String);
+    fn entries(&self) -> Vec<HistoryEntry>;
+    fn record(&self, entry: HistoryEntry);
+    fn clear(&self);
+    fn len(&self) -> usize {
+        self.entries().len()
+    }
 }
 
 pub trait LocaleProvider: Send + Sync {

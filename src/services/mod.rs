@@ -1,3 +1,4 @@
+pub mod json_history;
 pub mod locale;
 pub mod log_buffer;
 pub mod log_sink;

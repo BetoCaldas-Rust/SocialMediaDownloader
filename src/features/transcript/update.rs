@@ -1,7 +1,11 @@
 use crate::core::effect::Effect;
 use crate::core::state::TranscriptStatus;
-use crate::services::traits::TranscriptOrder;
+use crate::services::traits::{
+    file_name, history_source, new_history_id, now_ms, EntryKind, EntryStatus, HistoryEntry,
+    TranscriptOrder,
+};
 use crate::services::yt_dlp::downloader::default_download_dir;
+use crate::services::yt_dlp::transcript::parse_no_transcript_error;
 
 use super::intent::TranscriptIntent;
 use super::model::TranscriptModel;
@@ -117,10 +121,19 @@ fn retry_fetch(model: &mut TranscriptModel) -> Vec<Effect> {
     start_fetch(model)
 }
 
+fn transcript_detail(lang_used: &str, auto_generated: bool) -> String {
+    if auto_generated {
+        format!("[{lang_used}] (auto)")
+    } else {
+        format!("[{lang_used}]")
+    }
+}
+
 fn finish_fetch(
     model: &mut TranscriptModel,
     result: &Result<crate::services::traits::TranscriptResult, String>,
 ) -> Vec<Effect> {
+    let order = order_from(model);
     match result {
         Ok(ticket) => {
             model.status = TranscriptStatus::Completed;
@@ -129,12 +142,42 @@ fn finish_fetch(
             model.recents.retain(|entry| entry.path != ticket.path);
             model.recents.insert(0, ticket.clone());
             model.recents.truncate(RECENTS_CAP);
-            Vec::new()
+            let url = model.input.trim().to_string();
+            let name = file_name(&ticket.path).unwrap_or_else(|| url.clone());
+            vec![Effect::RecordHistory(Box::new(HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Transcript,
+                name,
+                source: history_source(None, &url),
+                url,
+                detail: Some(transcript_detail(&ticket.lang_used, ticket.auto_generated)),
+                finished_at_ms: now_ms(),
+                size_bytes: Some(ticket.size_bytes),
+                status: EntryStatus::Completed,
+                error: None,
+                path: Some(ticket.path.clone()),
+                transcript_order: Some(order),
+            }))]
         }
         Err(key) => {
             model.status = TranscriptStatus::Failed;
             model.error = Some(key.clone());
-            Vec::new()
+            let url =
+                parse_no_transcript_error(key).unwrap_or_else(|| model.input.trim().to_string());
+            vec![Effect::RecordHistory(Box::new(HistoryEntry {
+                id: new_history_id(),
+                kind: EntryKind::Transcript,
+                name: url.clone(),
+                source: history_source(None, &url),
+                url,
+                detail: None,
+                finished_at_ms: now_ms(),
+                size_bytes: None,
+                status: EntryStatus::Failed,
+                error: Some(key.clone()),
+                path: None,
+                transcript_order: Some(order),
+            }))]
         }
     }
 }
@@ -193,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn finished_ok_completes_and_prepends_recent() {
+    fn finished_ok_completes_prepends_recent_and_records() {
         let mut model = model_with_input();
         model.status = TranscriptStatus::Resolving;
         let effects = apply(
@@ -201,7 +244,13 @@ mod tests {
             &TranscriptIntent::TranscriptFinished(Ok(sample_result())),
         );
         assert_eq!(model.status, TranscriptStatus::Completed);
-        assert!(effects.is_empty());
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::RecordHistory(entry)]
+            if entry.status == crate::services::traits::EntryStatus::Completed
+                && entry.detail.as_deref() == Some("[pt]")
+                && entry.size_bytes == Some(128)
+        ));
         assert_eq!(model.recents.len(), 1);
         assert_eq!(model.result.as_ref(), model.recents.first());
     }
@@ -230,7 +279,7 @@ mod tests {
     fn finished_err_fails_with_error_key() {
         let mut model = model_with_input();
         model.status = TranscriptStatus::Resolving;
-        apply(
+        let effects = apply(
             &mut model,
             &TranscriptIntent::TranscriptFinished(Err(
                 "transcript_error_no_transcript|https://x".to_string()
@@ -241,6 +290,14 @@ mod tests {
             model.error.as_deref(),
             Some("transcript_error_no_transcript|https://x")
         );
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::RecordHistory(entry)]
+            if entry.status == crate::services::traits::EntryStatus::Failed
+                && entry.url == "https://x"
+                && entry.error.as_deref() == Some("transcript_error_no_transcript|https://x")
+                && entry.transcript_order.is_some()
+        ));
     }
 
     #[test]

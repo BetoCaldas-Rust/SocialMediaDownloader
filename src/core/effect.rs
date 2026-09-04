@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use crate::services::log_buffer::LogLevel;
-use crate::services::traits::{BatchItem, ChannelOrder, TranscriptOrder, VideoQuality};
+use crate::services::traits::{
+    BatchItem, ChannelOrder, HistoryEntry, TranscriptOrder, VideoQuality,
+};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -35,4 +37,7 @@ pub enum Effect {
         transcript: TranscriptOrder,
     },
     RevealInFolder(PathBuf),
+    RecordHistory(Box<HistoryEntry>),
+    RetryEntry(Box<HistoryEntry>),
+    ClearHistory,
 }
