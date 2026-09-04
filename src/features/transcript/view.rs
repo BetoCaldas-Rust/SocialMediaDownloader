@@ -196,6 +196,7 @@ fn render_recents(ui: &mut Ui, store: &mut Store, state: &TranscriptState) {
         }
         for (index, entry) in state.recents.iter().enumerate() {
             ui.horizontal(|ui| {
+                crate::ui::components::transcript_chip(ui, t("transcript_chip_label"));
                 let name = entry
                     .path
                     .file_name()

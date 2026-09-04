@@ -6,7 +6,8 @@ use crate::core::store::Store;
 use crate::i18n::registry::t;
 use crate::services::traits::{Container, VideoQuality};
 use crate::ui::components::{
-    card, field_label, full_primary, input_black, micro_label, page_header, section_title,
+    card, check_row, field_label, full_primary, input_black, micro_label, page_header,
+    section_title,
 };
 use crate::ui::theme::TEXT_SECONDARY;
 
@@ -90,21 +91,24 @@ fn render_options(ui: &mut Ui, store: &mut Store, state: &VideoState) {
         });
     });
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        let mut transcript = state.include_transcript;
-        if ui
-            .checkbox(&mut transcript, t("video_transcript_check"))
-            .changed()
-        {
-            dispatch(store, VideoIntent::SetTranscript(transcript));
-        }
-        let mut audio = false;
-        ui.add_enabled(
-            false,
-            egui::Checkbox::new(&mut audio, t("video_audio_check")),
-        )
-        .on_disabled_hover_text(t("video_audio_tooltip"));
-    });
+    let transcript = state.include_transcript;
+    check_row(
+        ui,
+        transcript,
+        true,
+        t("video_transcript_check"),
+        t("video_transcript_desc"),
+        || dispatch(store, VideoIntent::SetTranscript(!transcript)),
+    );
+    ui.add_space(6.0);
+    check_row(
+        ui,
+        false,
+        false,
+        t("video_audio_check"),
+        t("video_audio_desc"),
+        || {},
+    );
 }
 
 fn render_preview(ui: &mut Ui, state: &VideoState) {
@@ -118,7 +122,7 @@ fn render_preview(ui: &mut Ui, state: &VideoState) {
         }
         (_, Some(meta)) => {
             ui.horizontal(|ui| {
-                render_thumb(ui, &meta.title);
+                render_thumb(ui, &meta.title, &format_duration(meta.duration_secs));
                 ui.vertical(|ui| {
                     ui.label(egui::RichText::new(&meta.title).strong());
                     if !meta.channel.is_empty() {
@@ -145,7 +149,7 @@ fn render_preview(ui: &mut Ui, state: &VideoState) {
     }
 }
 
-fn render_thumb(ui: &mut Ui, title: &str) {
+fn render_thumb(ui: &mut Ui, title: &str, duration: &str) {
     let letter = title.chars().next().unwrap_or('▶').to_string();
     let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(140.0, 80.0), egui::Sense::hover());
     ui.painter().rect_filled(
@@ -159,6 +163,30 @@ fn render_thumb(ui: &mut Ui, title: &str) {
         letter,
         egui::FontId::proportional(28.0),
         TEXT_SECONDARY,
+    );
+    let badge_font = egui::FontId::proportional(10.0);
+    let galley = ui.fonts(|fonts| {
+        fonts.layout_no_wrap(
+            duration.to_string(),
+            badge_font.clone(),
+            egui::Color32::WHITE,
+        )
+    });
+    let badge = egui::Rect::from_min_size(
+        egui::Pos2::new(
+            rect.max.x - 4.0 - galley.size().x - 8.0,
+            rect.max.y - 4.0 - 16.0,
+        ),
+        egui::Vec2::new(galley.size().x + 8.0, 16.0),
+    );
+    ui.painter()
+        .rect_filled(badge, 2.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 217));
+    ui.painter().text(
+        badge.center(),
+        egui::Align2::CENTER_CENTER,
+        duration,
+        badge_font,
+        egui::Color32::WHITE,
     );
 }
 
@@ -207,6 +235,10 @@ fn render_progress(ui: &mut Ui, store: &mut Store, state: &VideoState) {
         } else {
             section_title(ui, t("video_completed"));
         }
+        ui.horizontal(|ui| {
+            crate::ui::components::video_chip(ui, t("video_chip_video"));
+            ui.label(state.filename.as_deref().unwrap_or("…"));
+        });
         ui.add(
             egui::ProgressBar::new((state.progress / 100.0).clamp(0.0, 1.0))
                 .show_percentage()
@@ -219,9 +251,6 @@ fn render_progress(ui: &mut Ui, store: &mut Store, state: &VideoState) {
                     .color(crate::ui::theme::TEXT_SECONDARY),
             );
         }
-        if let Some(name) = &state.filename {
-            ui.label(name);
-        }
         if state.output_path.is_some() && ui.button(t("video_open_file")).clicked() {
             dispatch(store, VideoIntent::RevealOutput);
         }
@@ -233,8 +262,8 @@ fn render_error(ui: &mut Ui, store: &mut Store, state: &VideoState) {
         return;
     }
     let message = state.error_key.as_deref().map(t).unwrap_or_default();
-    ui.group(|ui| {
-        ui.colored_label(egui::Color32::LIGHT_RED, message);
+    card(ui, |ui| {
+        ui.colored_label(crate::ui::theme::LOG_ERROR, message);
         ui.horizontal(|ui| {
             if ui.button(t("video_retry")).clicked() {
                 dispatch(store, VideoIntent::StartDownload);
