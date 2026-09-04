@@ -1,6 +1,6 @@
 [package]
 name = "social-media-downloader"
-version = "1.0.15"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
@@ -26,7 +26,7 @@ path = "src/main.rs"
 [package.metadata.packager]
 product-name = "Social Media Downloader"
 identifier = "com.betocaldas.smd"
-version = "1.0.15"
+version = "2.0.0"
 authors = ["Beto Caldas"]
 publisher = "Beto Caldas"
 description = "Baixe vídeos de diversas redes sociais."
