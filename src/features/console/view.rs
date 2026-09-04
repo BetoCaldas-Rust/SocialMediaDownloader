@@ -8,6 +8,7 @@ use crate::features::console::update::{
 };
 use crate::i18n::registry::t;
 use crate::services::log_buffer::{log_entries, log_len, LogEntry, LogLevel};
+use crate::ui::components::{card, page_header};
 use crate::ui::theme::{
     LOG_DEBUG, LOG_ERROR, LOG_ERROR_BG, LOG_INFO, LOG_SOURCE, LOG_WARN, SUCCESS_COLOR,
     TEXT_DISABLED, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -28,11 +29,11 @@ fn dispatch(store: &mut Store, intent: ConsoleIntent) {
 
 pub fn render(ui: &mut Ui, store: &mut Store) {
     let state = store.state().console.clone();
-    ui.heading(t("console_title"));
-    ui.label(t("console_subtitle"));
-    ui.add_space(8.0);
-    render_toolbar(ui, store, &state);
-    ui.add_space(8.0);
+    page_header(ui, "console_title", "console_subtitle");
+    card(ui, |ui| {
+        render_toolbar(ui, store, &state);
+    });
+    ui.add_space(10.0);
     let live_len = log_len();
     let base: Vec<LogEntry> = if state.paused {
         state.frozen.clone().unwrap_or_default()
@@ -53,31 +54,44 @@ fn render_toolbar(ui: &mut Ui, store: &mut Store, state: &ConsoleState) {
     let entries = log_entries();
     let counts = level_counts(&entries);
     let sources = available_sources(&entries);
-    ui.group(|ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(t("console_levels"));
-            render_chip(ui, store, LogLevel::Error, state.show_error, counts[0]);
-            render_chip(ui, store, LogLevel::Warn, state.show_warn, counts[1]);
-            render_chip(ui, store, LogLevel::Info, state.show_info, counts[2]);
-            render_chip(ui, store, LogLevel::Debug, state.show_debug, counts[3]);
-            ui.separator();
-            render_source_picker(ui, store, state, &sources);
-            render_search(ui, store, state);
-            ui.separator();
-            render_buttons(ui, store, state);
-        });
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            egui::RichText::new(t("console_levels"))
+                .small()
+                .color(TEXT_SECONDARY),
+        );
+        render_chip(ui, store, LogLevel::Error, state.show_error, counts[0]);
+        render_chip(ui, store, LogLevel::Warn, state.show_warn, counts[1]);
+        render_chip(ui, store, LogLevel::Info, state.show_info, counts[2]);
+        render_chip(ui, store, LogLevel::Debug, state.show_debug, counts[3]);
+        ui.separator();
+        render_source_picker(ui, store, state, &sources);
+        render_search(ui, store, state);
+        ui.separator();
+        render_buttons(ui, store, state);
     });
 }
 
 fn render_chip(ui: &mut Ui, store: &mut Store, level: LogLevel, active: bool, count: usize) {
     let text = format!("● {} {count}", level.label());
-    let color = if active {
-        level_color(level)
-    } else {
-        TEXT_DISABLED
-    };
-    if ui
-        .selectable_label(active, RichText::new(text).color(color).monospace())
+    if active {
+        let response = ui.add(
+            egui::Button::new(
+                RichText::new(text)
+                    .color(level_color(level))
+                    .monospace()
+                    .small(),
+            )
+            .rounding(10.0),
+        );
+        if response.clicked() {
+            dispatch(store, ConsoleIntent::ToggleLevel(level));
+        }
+    } else if ui
+        .selectable_label(
+            false,
+            RichText::new(text).color(TEXT_DISABLED).monospace().small(),
+        )
         .clicked()
     {
         dispatch(store, ConsoleIntent::ToggleLevel(level));

@@ -3,13 +3,19 @@ use egui::{Color32, Rounding, Stroke, Visuals};
 pub const BG_PRIMARY: Color32 = Color32::from_rgb(26, 26, 26);
 pub const BG_SECONDARY: Color32 = Color32::from_rgb(45, 45, 45);
 pub const BG_DARK: Color32 = Color32::from_rgb(0, 0, 0);
+pub const SIDEBAR_BG: Color32 = Color32::from_rgb(20, 20, 20);
 
 pub const ACCENT_PRIMARY: Color32 = Color32::from_rgb(255, 215, 0);
 pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(255, 237, 78);
 pub const ACCENT_DARK: Color32 = Color32::from_rgb(255, 183, 0);
+pub fn accent_dim() -> Color32 {
+    Color32::from_rgba_unmultiplied(255, 215, 0, 26)
+}
 
 pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(255, 255, 255);
 pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(200, 200, 200);
+pub const TEXT_ON_ACCENT: Color32 = Color32::from_rgb(0, 0, 0);
+
 #[allow(dead_code)]
 pub const TEXT_DISABLED: Color32 = Color32::from_rgb(120, 120, 120);
 

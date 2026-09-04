@@ -7,6 +7,8 @@ use crate::i18n::registry::t;
 use crate::services::traits::{TranscriptFormat, VideoQuality};
 use crate::services::yt_dlp::binary::resolve_binary;
 use crate::storage::config::{logs_dir, LogLevelSetting};
+use crate::ui::components::{card, page_header};
+use crate::ui::theme::ACCENT_PRIMARY;
 
 const LANG_OPTIONS: [&str; 3] = ["pt", "en", "es"];
 const FALLBACK_OPTIONS: [&str; 4] = ["off", "en", "es", "pt"];
@@ -24,27 +26,30 @@ fn display_name(locale: &str) -> String {
 }
 
 pub fn render(ui: &mut Ui, store: &mut Store) {
-    ui.heading(t("settings_title"));
-    ui.label(t("settings_subtitle"));
-    ui.separator();
+    page_header(ui, "settings_title", "settings_subtitle");
     egui::ScrollArea::vertical().show(ui, |ui| {
         render_downloads(ui, store);
-        ui.add_space(8.0);
+        ui.add_space(10.0);
         render_transcript(ui, store);
-        ui.add_space(8.0);
+        ui.add_space(10.0);
         render_app(ui, store);
-        ui.add_space(8.0);
+        ui.add_space(10.0);
         render_language(ui, store);
-        ui.add_space(8.0);
+        ui.add_space(10.0);
         render_system(ui, store);
     });
 }
 
 fn group(ui: &mut Ui, title_key: &str, desc_key: &str, body: impl FnOnce(&mut Ui)) {
-    ui.group(|ui| {
-        ui.label(RichText::new(t(title_key)).strong());
+    card(ui, |ui| {
+        ui.label(
+            RichText::new(t(title_key))
+                .size(12.0)
+                .strong()
+                .color(ACCENT_PRIMARY),
+        );
         ui.label(RichText::new(t(desc_key)).small().weak());
-        ui.separator();
+        ui.add_space(6.0);
         body(ui);
     });
 }

@@ -17,7 +17,8 @@ use crate::services::yt_dlp::{
     YtDlpChannelProvider, YtDlpDownloader, YtDlpMetadataProvider, YtDlpTranscriber,
 };
 use crate::storage::config::AppConfig;
-use crate::ui::theme::{apply_custom_theme, configure_fonts};
+use crate::ui::components::body_margin;
+use crate::ui::theme::{apply_custom_theme, configure_fonts, SIDEBAR_BG};
 
 pub struct SmdApp {
     store: Store,
@@ -118,13 +119,22 @@ impl eframe::App for SmdApp {
         }
         egui::SidePanel::left("sidebar")
             .resizable(false)
-            .default_width(220.0)
+            .default_width(200.0)
+            .frame(
+                egui::Frame::side_top_panel(&ctx.style())
+                    .fill(SIDEBAR_BG)
+                    .inner_margin(egui::Margin::symmetric(10.0, 18.0)),
+            )
             .show(ctx, |ui| {
                 sidebar::render(ui, &mut self.store);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_notices(ui);
-            self.render_screen(ui);
-        });
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::central_panel(&ctx.style()).inner_margin(body_margin()),
+            )
+            .show(ctx, |ui| {
+                self.render_notices(ui);
+                self.render_screen(ui);
+            });
     }
 }

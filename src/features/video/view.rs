@@ -5,18 +5,24 @@ use crate::core::state::{VideoState, VideoStatus};
 use crate::core::store::Store;
 use crate::i18n::registry::t;
 use crate::services::traits::{Container, VideoQuality};
+use crate::ui::components::{
+    card, field_label, full_primary, input_black, micro_label, page_header, section_title,
+};
+use crate::ui::theme::TEXT_SECONDARY;
 
 pub fn render(ui: &mut Ui, store: &mut Store) {
     let state = store.state().video.clone();
-    ui.heading(t("video_title"));
-    ui.label(t("video_subtitle"));
-    ui.add_space(8.0);
+    page_header(ui, "video_title", "video_subtitle");
     render_url_card(ui, store, &state);
-    ui.add_space(8.0);
-    render_options(ui, store, &state);
-    ui.add_space(8.0);
-    render_preview(ui, &state);
-    ui.add_space(8.0);
+    ui.add_space(10.0);
+    card(ui, |ui| {
+        render_options(ui, store, &state);
+    });
+    ui.add_space(10.0);
+    card(ui, |ui| {
+        render_preview(ui, &state);
+    });
+    ui.add_space(10.0);
     render_actions(ui, store, &state);
     render_progress(ui, store, &state);
     render_error(ui, store, &state);
@@ -27,11 +33,11 @@ fn dispatch(store: &mut Store, intent: VideoIntent) {
 }
 
 fn render_url_card(ui: &mut Ui, store: &mut Store, state: &VideoState) {
-    ui.group(|ui| {
-        ui.label(t("video_url_label"));
+    card(ui, |ui| {
+        field_label(ui, t("video_url_label"));
         ui.horizontal(|ui| {
             let mut url = state.url.clone();
-            let field = ui.add(egui::TextEdit::singleline(&mut url).hint_text(t("video_url_hint")));
+            let field = input_black(ui, &mut url, t("video_url_hint"));
             if field.changed() {
                 dispatch(store, VideoIntent::SetUrl(url));
             }
@@ -51,32 +57,39 @@ fn render_url_card(ui: &mut Ui, store: &mut Store, state: &VideoState) {
 
 fn render_options(ui: &mut Ui, store: &mut Store, state: &VideoState) {
     ui.horizontal(|ui| {
-        let mut quality = state.quality;
-        egui::ComboBox::from_label(t("video_quality_label"))
-            .selected_text(t(quality.locale_key()))
-            .show_ui(ui, |ui| {
-                for option in VideoQuality::ordered() {
-                    ui.selectable_value(&mut quality, option, t(option.locale_key()));
-                }
-            });
-        if quality != state.quality {
-            dispatch(store, VideoIntent::SetQuality(quality));
-        }
-        let mut container = state.container;
-        let container_label = t(container.locale_key());
-        egui::ComboBox::from_label(t("video_format_label"))
-            .selected_text(container_label)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut container,
-                    Container::Mp4,
-                    t(Container::Mp4.locale_key()),
-                );
-            });
-        if container != state.container {
-            dispatch(store, VideoIntent::SetContainer(container));
-        }
+        ui.vertical(|ui| {
+            micro_label(ui, t("video_quality_label"));
+            let mut quality = state.quality;
+            egui::ComboBox::from_id_source("video_quality")
+                .selected_text(t(quality.locale_key()))
+                .show_ui(ui, |ui| {
+                    for option in VideoQuality::ordered() {
+                        ui.selectable_value(&mut quality, option, t(option.locale_key()));
+                    }
+                });
+            if quality != state.quality {
+                dispatch(store, VideoIntent::SetQuality(quality));
+            }
+        });
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            micro_label(ui, t("video_format_label"));
+            let mut container = state.container;
+            egui::ComboBox::from_id_source("video_format")
+                .selected_text(t(container.locale_key()))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut container,
+                        Container::Mp4,
+                        t(Container::Mp4.locale_key()),
+                    );
+                });
+            if container != state.container {
+                dispatch(store, VideoIntent::SetContainer(container));
+            }
+        });
     });
+    ui.add_space(8.0);
     ui.horizontal(|ui| {
         let mut transcript = state.include_transcript;
         if ui
@@ -95,67 +108,91 @@ fn render_options(ui: &mut Ui, store: &mut Store, state: &VideoState) {
 }
 
 fn render_preview(ui: &mut Ui, state: &VideoState) {
-    ui.group(|ui| {
-        ui.label(t("video_preview_title"));
-        match (&state.status, &state.metadata) {
-            (VideoStatus::Resolving, _) => {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(t("video_fetching"));
-                });
-            }
-            (_, Some(meta)) => {
-                ui.label(egui::RichText::new(&meta.title).strong());
-                if !meta.channel.is_empty() {
-                    ui.label(detail_line("video_preview_channel", &meta.channel));
-                }
-                ui.label(detail_line(
-                    "video_preview_duration",
-                    &format_duration(meta.duration_secs),
-                ));
-                if let Some(views) = meta.view_count {
-                    ui.label(detail_line("video_preview_views", &views.to_string()));
-                }
-                if let Some(size) = &meta.size_label {
-                    ui.label(detail_line("video_preview_size", size));
-                }
-            }
-            _ => {
-                ui.label(t("video_preview_empty"));
-            }
+    section_title(ui, t("video_preview_title"));
+    match (&state.status, &state.metadata) {
+        (VideoStatus::Resolving, _) => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(t("video_fetching"));
+            });
         }
-    });
+        (_, Some(meta)) => {
+            ui.horizontal(|ui| {
+                render_thumb(ui, &meta.title);
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(&meta.title).strong());
+                    if !meta.channel.is_empty() {
+                        ui.label(detail_line("video_preview_channel", &meta.channel));
+                    }
+                    ui.label(detail_line(
+                        "video_preview_duration",
+                        &format_duration(meta.duration_secs),
+                    ));
+                    if let Some(views) = meta.view_count {
+                        ui.label(detail_line("video_preview_views", &views.to_string()));
+                    }
+                    if let Some(size) = &meta.size_label {
+                        ui.label(detail_line("video_preview_size", size));
+                    }
+                });
+            });
+        }
+        _ => {
+            ui.label(
+                egui::RichText::new(t("video_preview_empty")).color(TEXT_SECONDARY),
+            );
+        }
+    }
+}
+
+fn render_thumb(ui: &mut Ui, title: &str) {
+    let letter = title.chars().next().unwrap_or('▶').to_string();
+    let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(140.0, 80.0), egui::Sense::hover());
+    ui.painter().rect_filled(
+        rect,
+        3.0,
+        egui::Color32::from_rgb(42, 42, 42),
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        letter,
+        egui::FontId::proportional(28.0),
+        TEXT_SECONDARY,
+    );
 }
 
 fn render_actions(ui: &mut Ui, store: &mut Store, state: &VideoState) {
-    ui.horizontal(|ui| {
-        let has_url = !state.url.trim().is_empty();
-        match state.status {
-            VideoStatus::Downloading => {
+    let has_url = !state.url.trim().is_empty();
+    match state.status {
+        VideoStatus::Downloading => {
+            ui.horizontal(|ui| {
                 let label = format!("{} {:.0}%", t("video_downloading"), state.progress);
                 ui.add_enabled(false, egui::Button::new(label));
                 if ui.button(t("video_cancel")).clicked() {
                     dispatch(store, VideoIntent::CancelDownload);
                 }
-            }
-            VideoStatus::Resolving => {
-                ui.add_enabled(false, egui::Button::new(t("video_fetching")));
-            }
-            VideoStatus::Failed => {
-                if ui.button(t("video_retry")).clicked() {
-                    dispatch(store, VideoIntent::StartDownload);
-                }
-            }
-            _ => {
-                if ui
-                    .add_enabled(has_url, egui::Button::new(t("video_download_button")))
-                    .clicked()
-                {
-                    dispatch(store, VideoIntent::StartDownload);
-                }
+            });
+        }
+        VideoStatus::Resolving => {
+            ui.add_enabled_ui(false, |ui| {
+                full_primary(ui, t("video_fetching"));
+            });
+        }
+        VideoStatus::Failed => {
+            if full_primary(ui, t("video_retry")).clicked() {
+                dispatch(store, VideoIntent::StartDownload);
             }
         }
-    });
+        _ => {
+            ui.add_enabled_ui(has_url, |ui| {
+                if full_primary(ui, t("video_download_button")).clicked() {
+                    dispatch(store, VideoIntent::StartDownload);
+                }
+            });
+        }
+    }
+    ui.add_space(4.0);
 }
 
 fn render_progress(ui: &mut Ui, store: &mut Store, state: &VideoState) {
@@ -164,15 +201,23 @@ fn render_progress(ui: &mut Ui, store: &mut Store, state: &VideoState) {
     if !active && !done {
         return;
     }
-    ui.group(|ui| {
+    card(ui, |ui| {
         if active {
-            ui.label(t("video_downloading"));
+            section_title(ui, t("video_downloading"));
         } else {
-            ui.label(t("video_completed"));
+            section_title(ui, t("video_completed"));
         }
-        ui.add(egui::ProgressBar::new((state.progress / 100.0).clamp(0.0, 1.0)).show_percentage());
+        ui.add(
+            egui::ProgressBar::new((state.progress / 100.0).clamp(0.0, 1.0))
+                .show_percentage()
+                .fill(crate::ui::theme::ACCENT_PRIMARY),
+        );
         if let Some(summary) = transfer_summary(state) {
-            ui.label(summary);
+            ui.label(
+                egui::RichText::new(summary)
+                    .small()
+                    .color(crate::ui::theme::TEXT_SECONDARY),
+            );
         }
         if let Some(name) = &state.filename {
             ui.label(name);

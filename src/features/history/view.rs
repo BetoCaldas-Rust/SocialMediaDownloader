@@ -10,17 +10,19 @@ use crate::services::traits::{EntryKind, HistoryEntry};
 use crate::services::yt_dlp::transcript::{
     parse_no_transcript_error, transcript_error_display_key,
 };
+use crate::ui::components::{card, input_black, page_header};
+use crate::ui::theme::{ACCENT_PRIMARY, LOG_ERROR, TEXT_SECONDARY};
 
 pub fn render(ui: &mut Ui, store: &mut Store) {
     let entries = store.history_entries();
     let state = store.state().history.clone();
-    ui.heading(t("history_title"));
-    ui.label(t("history_subtitle"));
-    ui.add_space(8.0);
-    render_toolbar(ui, store, &state, &entries);
-    ui.add_space(8.0);
+    page_header(ui, "history_title", "history_subtitle");
+    card(ui, |ui| {
+        render_toolbar(ui, store, &state, &entries);
+    });
+    ui.add_space(10.0);
     render_list(ui, store, &state, &entries);
-    ui.add_space(8.0);
+    ui.add_space(10.0);
     render_statusbar(ui, store);
 }
 
@@ -29,50 +31,63 @@ fn dispatch(store: &mut Store, intent: HistoryIntent) {
 }
 
 fn render_toolbar(ui: &mut Ui, store: &mut Store, state: &HistoryState, entries: &[HistoryEntry]) {
-    ui.group(|ui| {
-        ui.horizontal(|ui| {
-            for filter in HistoryFilter::ordered() {
-                let count = apply_filter(entries, filter, "").len();
-                let label = format!("{} ({count})", t(filter.locale_key()));
-                if ui.selectable_label(state.filter == filter, label).clicked() {
-                    dispatch(store, HistoryIntent::SetFilter(filter));
+    ui.horizontal_wrapped(|ui| {
+        for filter in HistoryFilter::ordered() {
+            let count = apply_filter(entries, filter, "").len();
+            let label = format!("{} {count}", t(filter.locale_key()));
+            let selected = state.filter == filter;
+            let response = if selected {
+                ui.add(
+                    egui::Button::new(
+                        egui::RichText::new(label)
+                            .small()
+                            .color(crate::ui::theme::TEXT_ON_ACCENT),
+                    )
+                    .fill(ACCENT_PRIMARY)
+                    .rounding(10.0),
+                )
+            } else {
+                ui.add(egui::Button::new(egui::RichText::new(label).small()).rounding(10.0))
+            };
+            if response.clicked() {
+                dispatch(store, HistoryIntent::SetFilter(filter));
+            }
+        }
+    });
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        let mut query = state.query.clone();
+        let field = input_black(ui, &mut query, t("history_search_hint"));
+        if field.changed() {
+            dispatch(store, HistoryIntent::SetQuery(query));
+        }
+        let mut sort = state.sort;
+        egui::ComboBox::from_id_source("history_sort")
+            .selected_text(t(sort.locale_key()))
+            .show_ui(ui, |ui| {
+                for option in HistorySort::ordered() {
+                    ui.selectable_value(&mut sort, option, t(option.locale_key()));
                 }
+            });
+        if sort != state.sort {
+            dispatch(store, HistoryIntent::SetSort(sort));
+        }
+    });
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        if ui.button(t("history_open_folder")).clicked() {
+            dispatch(store, HistoryIntent::OpenDownloadsFolder);
+        }
+        if state.confirm_clear {
+            if ui.button(t("history_clear_confirm")).clicked() {
+                dispatch(store, HistoryIntent::ClearHistory);
             }
-        });
-        ui.horizontal(|ui| {
-            let mut query = state.query.clone();
-            let field =
-                ui.add(egui::TextEdit::singleline(&mut query).hint_text(t("history_search_hint")));
-            if field.changed() {
-                dispatch(store, HistoryIntent::SetQuery(query));
+            if ui.button(t("history_clear_cancel")).clicked() {
+                dispatch(store, HistoryIntent::CancelClear);
             }
-            let mut sort = state.sort;
-            egui::ComboBox::from_label(t("history_sort_label"))
-                .selected_text(t(sort.locale_key()))
-                .show_ui(ui, |ui| {
-                    for option in HistorySort::ordered() {
-                        ui.selectable_value(&mut sort, option, t(option.locale_key()));
-                    }
-                });
-            if sort != state.sort {
-                dispatch(store, HistoryIntent::SetSort(sort));
-            }
-        });
-        ui.horizontal(|ui| {
-            if ui.button(t("history_open_folder")).clicked() {
-                dispatch(store, HistoryIntent::OpenDownloadsFolder);
-            }
-            if state.confirm_clear {
-                if ui.button(t("history_clear_confirm")).clicked() {
-                    dispatch(store, HistoryIntent::ClearHistory);
-                }
-                if ui.button(t("history_clear_cancel")).clicked() {
-                    dispatch(store, HistoryIntent::CancelClear);
-                }
-            } else if ui.button(t("history_clear")).clicked() {
-                dispatch(store, HistoryIntent::RequestClear);
-            }
-        });
+        } else if ui.button(t("history_clear")).clicked() {
+            dispatch(store, HistoryIntent::RequestClear);
+        }
     });
 }
 
@@ -80,13 +95,15 @@ fn render_list(ui: &mut Ui, store: &mut Store, state: &HistoryState, entries: &[
     let filtered = apply_filter(entries, state.filter, &state.query);
     let sorted = apply_sort(filtered, state.sort);
     if sorted.is_empty() {
-        ui.group(|ui| {
-            ui.label(t("history_empty"));
+        card(ui, |ui| {
+            ui.label(
+                egui::RichText::new(t("history_empty")).color(TEXT_SECONDARY),
+            );
         });
         return;
     }
     let now_ms = Local::now().timestamp_millis();
-    ui.group(|ui| {
+    card(ui, |ui| {
         egui::ScrollArea::vertical()
             .max_height(380.0)
             .show(ui, |ui| {
@@ -107,7 +124,7 @@ fn render_row(ui: &mut Ui, store: &mut Store, entry: &HistoryEntry, now_ms: i64)
         ui.vertical(|ui| {
             ui.label(entry.name.clone());
             if let Some(error) = &entry.error {
-                ui.colored_label(egui::Color32::LIGHT_RED, display_error(error));
+                ui.colored_label(LOG_ERROR, display_error(error));
             }
             ui.label(egui::RichText::new(entry.source.clone()).small().weak());
         });
@@ -151,8 +168,8 @@ fn size_label(entry: &HistoryEntry) -> String {
 fn render_statusbar(ui: &mut Ui, store: &mut Store) {
     let summary = store.history_totals();
     let folder = store.download_dir().display().to_string();
-    ui.group(|ui| {
-        ui.label(format!(
+    ui.label(
+        egui::RichText::new(format!(
             "{} {} · {} {} · {} {} · {}",
             summary.count,
             t("history_status_items"),
@@ -161,6 +178,8 @@ fn render_statusbar(ui: &mut Ui, store: &mut Store) {
             summary.failures,
             t("history_status_failures"),
             folder,
-        ));
-    });
+        ))
+        .small()
+        .color(TEXT_SECONDARY),
+    );
 }
