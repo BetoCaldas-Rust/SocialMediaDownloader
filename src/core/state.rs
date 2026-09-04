@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use crate::services::traits::{Container, VideoMetadata, VideoQuality};
+use crate::services::traits::{
+    Container, TranscriptFormat, TranscriptResult, VideoMetadata, VideoQuality,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Screen {
@@ -66,10 +68,54 @@ pub struct VideoState {
     pub error_key: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TranscriptStatus {
+    #[default]
+    Idle,
+    Resolving,
+    Downloading,
+    Completed,
+    Failed,
+}
+
+impl TranscriptStatus {
+    pub fn is_busy(self) -> bool {
+        matches!(
+            self,
+            TranscriptStatus::Resolving | TranscriptStatus::Downloading
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranscriptState {
     pub input: String,
+    pub lang: String,
+    pub format: TranscriptFormat,
+    pub fallback: String,
+    pub accept_auto: bool,
+    pub timestamps: bool,
+    pub status: TranscriptStatus,
+    pub result: Option<TranscriptResult>,
+    pub error: Option<String>,
+    pub recents: Vec<TranscriptResult>,
+}
+
+impl Default for TranscriptState {
+    fn default() -> Self {
+        Self {
+            input: String::new(),
+            lang: "pt".to_string(),
+            format: TranscriptFormat::Srt,
+            fallback: "en".to_string(),
+            accept_auto: true,
+            timestamps: true,
+            status: TranscriptStatus::Idle,
+            result: None,
+            error: None,
+            recents: Vec::new(),
+        }
+    }
 }
 
 #[allow(dead_code)]

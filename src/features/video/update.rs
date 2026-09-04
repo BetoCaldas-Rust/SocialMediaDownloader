@@ -153,13 +153,6 @@ fn finish_download(
             model.progress = 100.0;
             model.output_path = Some(ticket.path.clone());
             model.error_key = None;
-            if model.include_transcript {
-                return vec![Effect::PushLog {
-                    level: LogLevel::Info,
-                    source: "transcript".to_string(),
-                    message: "transcript requested — arrives in F3".to_string(),
-                }];
-            }
             Vec::new()
         }
         Err(key) => fail(model, key),
@@ -283,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn download_finished_logs_transcript_note_when_checked() {
+    fn download_finished_completes_without_side_effects() {
         let mut model = model_with_url();
         model.status = VideoStatus::Downloading;
         model.include_transcript = true;
@@ -296,9 +289,6 @@ mod tests {
         );
         assert_eq!(model.status, VideoStatus::Completed);
         assert_eq!(model.progress, 100.0);
-        assert!(matches!(
-            effects.as_slice(),
-            [Effect::PushLog { source, .. }] if source == "transcript"
-        ));
+        assert!(effects.is_empty());
     }
 }

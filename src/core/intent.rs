@@ -1,6 +1,7 @@
 use super::state::Screen;
 use crate::services::traits::{
-    Container, DownloadProgress, DownloadTicket, VideoMetadata, VideoQuality,
+    Container, DownloadProgress, DownloadTicket, TranscriptFormat, TranscriptResult, VideoMetadata,
+    VideoQuality,
 };
 
 #[derive(Debug, Clone)]
@@ -19,10 +20,19 @@ pub enum VideoIntent {
     DismissError,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum TranscriptIntent {
     SetInput(String),
+    SetLang(String),
+    SetFormat(TranscriptFormat),
+    SetFallback(String),
+    ToggleAuto,
+    ToggleTimestamps,
+    FetchTranscript,
+    TranscriptFinished(Result<TranscriptResult, String>),
+    Retry,
+    Dismiss,
+    RevealRecent(usize),
 }
 
 #[allow(dead_code)]
@@ -53,7 +63,6 @@ pub enum SettingsIntent {
 pub enum AppIntent {
     Navigate(Screen),
     Video(VideoIntent),
-    #[allow(dead_code)]
     Transcript(TranscriptIntent),
     #[allow(dead_code)]
     Channel(ChannelIntent),

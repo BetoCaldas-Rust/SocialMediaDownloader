@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::services::log_buffer::LogLevel;
-use crate::services::traits::VideoQuality;
+use crate::services::traits::{TranscriptOrder, VideoQuality};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -19,5 +19,9 @@ pub enum Effect {
         quality: VideoQuality,
     },
     CancelActive,
+    CancelTranscript,
+    FetchTranscript {
+        order: TranscriptOrder,
+    },
     RevealInFolder(PathBuf),
 }

@@ -84,16 +84,65 @@ pub struct DownloadProgress {
     pub filename: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-pub struct TranscriptOrder {
-    pub url: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TranscriptFormat {
+    #[default]
+    Srt,
+    Vtt,
+    Txt,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-pub struct TranscriptDraft {
-    pub text: String,
+impl TranscriptFormat {
+    pub fn locale_key(self) -> &'static str {
+        match self {
+            TranscriptFormat::Srt => "transcript_format_srt",
+            TranscriptFormat::Vtt => "transcript_format_vtt",
+            TranscriptFormat::Txt => "transcript_format_txt",
+        }
+    }
+
+    pub fn ordered() -> [TranscriptFormat; 3] {
+        [
+            TranscriptFormat::Srt,
+            TranscriptFormat::Vtt,
+            TranscriptFormat::Txt,
+        ]
+    }
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            TranscriptFormat::Srt => "srt",
+            TranscriptFormat::Vtt => "vtt",
+            TranscriptFormat::Txt => "txt",
+        }
+    }
+
+    pub fn convert_target(self) -> &'static str {
+        match self {
+            TranscriptFormat::Srt => "srt",
+            TranscriptFormat::Vtt => "vtt",
+            TranscriptFormat::Txt => "srt",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TranscriptOrder {
+    pub url: String,
+    pub lang: String,
+    pub format: TranscriptFormat,
+    pub fallback: Option<String>,
+    pub accept_auto: bool,
+    pub timestamps: bool,
+    pub output_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TranscriptResult {
+    pub path: PathBuf,
+    pub lang_used: String,
+    pub auto_generated: bool,
+    pub size_bytes: u64,
 }
 
 #[allow(dead_code)]
@@ -122,10 +171,9 @@ pub trait Downloader: Send + Sync {
     ) -> Result<DownloadTicket, String>;
 }
 
-#[allow(dead_code)]
 #[async_trait::async_trait]
 pub trait Transcriber: Send + Sync {
-    async fn transcribe(&self, order: TranscriptOrder) -> Result<TranscriptDraft, String>;
+    async fn transcribe(&self, order: &TranscriptOrder) -> Result<TranscriptResult, String>;
 }
 
 #[allow(dead_code)]

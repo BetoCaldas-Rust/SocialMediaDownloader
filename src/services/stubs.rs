@@ -2,7 +2,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::traits::{
     ChannelOrder, ChannelProvider, ChannelSummary, DownloadOrder, DownloadProgress, DownloadTicket,
-    Downloader, HistoryStore, MetadataProvider, Transcriber, TranscriptDraft, TranscriptOrder,
+    Downloader, HistoryStore, MetadataProvider, Transcriber, TranscriptOrder, TranscriptResult,
     VideoMetadata,
 };
 
@@ -43,8 +43,8 @@ impl Downloader for StubDownloader {
 
 #[async_trait::async_trait]
 impl Transcriber for StubTranscriber {
-    async fn transcribe(&self, _order: TranscriptOrder) -> Result<TranscriptDraft, String> {
-        Err(PENDING.to_string())
+    async fn transcribe(&self, _order: &TranscriptOrder) -> Result<TranscriptResult, String> {
+        Err("transcript_error_fetch".to_string())
     }
 }
 

@@ -6,12 +6,13 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 
 use super::effect::Effect;
-use super::intent::{AppIntent, VideoIntent};
-use super::state::{AppState, VideoStatus};
+use super::intent::{AppIntent, TranscriptIntent, VideoIntent};
+use super::state::{AppState, TranscriptStatus, VideoStatus};
 use crate::features::{channel, console, history, settings, transcript, video};
 use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{
     DownloadOrder, DownloadProgress, Downloader, LocaleProvider, LogSink, MetadataProvider,
+    Transcriber, TranscriptOrder,
 };
 use crate::services::yt_dlp::downloader::default_download_dir;
 
@@ -25,7 +26,22 @@ pub fn update(state: &mut AppState, intent: &AppIntent) -> Vec<Effect> {
                 message: format!("navigated to {screen:?}"),
             }]
         }
-        AppIntent::Video(inner) => video::update::apply(&mut state.video, inner),
+        AppIntent::Video(inner) => {
+            let mut effects = video::update::apply(&mut state.video, inner);
+            if matches!(inner, VideoIntent::DownloadFinished(Ok(_)))
+                && state.video.include_transcript
+            {
+                let url = state.video.url.trim().to_string();
+                if !url.is_empty() {
+                    state.transcript.input = url;
+                    effects.extend(transcript::update::apply(
+                        &mut state.transcript,
+                        &TranscriptIntent::FetchTranscript,
+                    ));
+                }
+            }
+            effects
+        }
         AppIntent::Transcript(inner) => transcript::update::apply(&mut state.transcript, inner),
         AppIntent::Channel(inner) => channel::update::apply(&mut state.channel, inner),
         AppIntent::History(inner) => history::update::apply(&mut state.history, inner),
@@ -40,10 +56,12 @@ pub struct Store {
     log_sink: Arc<dyn LogSink>,
     metadata: Arc<dyn MetadataProvider>,
     downloader: Arc<dyn Downloader>,
+    transcriber: Arc<dyn Transcriber>,
     runtime: Option<Arc<Runtime>>,
     intent_tx: UnboundedSender<AppIntent>,
     intent_rx: UnboundedReceiver<AppIntent>,
     active_task: Option<JoinHandle<()>>,
+    active_transcript_task: Option<JoinHandle<()>>,
 }
 
 impl Store {
@@ -52,6 +70,7 @@ impl Store {
         log_sink: Arc<dyn LogSink>,
         metadata: Arc<dyn MetadataProvider>,
         downloader: Arc<dyn Downloader>,
+        transcriber: Arc<dyn Transcriber>,
     ) -> Self {
         let state = AppState {
             locale: locale_provider.current(),
@@ -64,10 +83,12 @@ impl Store {
             log_sink,
             metadata,
             downloader,
+            transcriber,
             runtime: build_runtime(),
             intent_tx,
             intent_rx,
             active_task: None,
+            active_transcript_task: None,
         }
     }
 
@@ -83,6 +104,9 @@ impl Store {
         matches!(
             self.state.video.status,
             VideoStatus::Resolving | VideoStatus::Downloading
+        ) || matches!(
+            self.state.transcript.status,
+            TranscriptStatus::Resolving | TranscriptStatus::Downloading
         )
     }
 
@@ -123,6 +147,12 @@ impl Store {
                         handle.abort();
                     }
                 }
+                Effect::CancelTranscript => {
+                    if let Some(handle) = self.active_transcript_task.take() {
+                        handle.abort();
+                    }
+                }
+                Effect::FetchTranscript { order } => self.spawn_transcript(order.clone()),
                 Effect::RevealInFolder(path) => reveal_in_folder(path, &self.log_sink),
             }
         }
@@ -130,6 +160,16 @@ impl Store {
 
     fn track(&mut self, handle: JoinHandle<()>) {
         if let Some(previous) = self.active_task.replace(handle) {
+            previous.abort();
+        }
+    }
+
+    /// Transcript work runs in its own slot so a video download and a
+    /// transcript fetch (including the auto-fetch after a video
+    /// completes) proceed independently; `CancelActive` stays
+    /// video-only and `CancelTranscript` aborts this slot.
+    fn track_transcript(&mut self, handle: JoinHandle<()>) {
+        if let Some(previous) = self.active_transcript_task.replace(handle) {
             previous.abort();
         }
     }
@@ -174,6 +214,23 @@ impl Store {
             let result = downloader.download(order, progress_tx).await;
             relay.abort();
             let _ = intent_tx.send(AppIntent::Video(VideoIntent::DownloadFinished(result)));
+        }));
+    }
+
+    fn spawn_transcript(&mut self, order: TranscriptOrder) {
+        let Some(runtime) = self.runtime.clone() else {
+            self.dispatch(AppIntent::Transcript(TranscriptIntent::TranscriptFinished(
+                Err("transcript_error_fetch".to_string()),
+            )));
+            return;
+        };
+        let transcriber = self.transcriber.clone();
+        let intent_tx = self.intent_tx.clone();
+        self.track_transcript(runtime.spawn(async move {
+            let result = transcriber.transcribe(&order).await;
+            let _ = intent_tx.send(AppIntent::Transcript(TranscriptIntent::TranscriptFinished(
+                result,
+            )));
         }));
     }
 }
@@ -229,7 +286,7 @@ mod tests {
     use super::*;
     use crate::services::locale::LocaleService;
     use crate::services::log_sink::BufferLogSink;
-    use crate::services::stubs::{StubDownloader, StubMetadataProvider};
+    use crate::services::stubs::{StubDownloader, StubMetadataProvider, StubTranscriber};
 
     fn test_store() -> Store {
         Store::new(
@@ -237,6 +294,7 @@ mod tests {
             Arc::new(BufferLogSink),
             Arc::new(StubMetadataProvider),
             Arc::new(StubDownloader),
+            Arc::new(StubTranscriber),
         )
     }
 
@@ -266,5 +324,50 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(store.state().video.status, VideoStatus::Failed);
+    }
+
+    #[test]
+    fn transcript_failure_returns_as_intent() {
+        let mut store = test_store();
+        store.dispatch(AppIntent::Transcript(TranscriptIntent::SetInput(
+            "https://example.com/v".to_string(),
+        )));
+        store.dispatch(AppIntent::Transcript(TranscriptIntent::FetchTranscript));
+        assert_eq!(store.state().transcript.status, TranscriptStatus::Resolving);
+        for _ in 0..200 {
+            store.drain_pending();
+            if store.state().transcript.status == TranscriptStatus::Failed {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(store.state().transcript.status, TranscriptStatus::Failed);
+        assert_eq!(
+            store.state().transcript.error.as_deref(),
+            Some("transcript_error_fetch")
+        );
+    }
+
+    #[test]
+    fn video_completion_auto_dispatches_transcript() {
+        use crate::services::traits::DownloadTicket;
+        let mut store = test_store();
+        store.dispatch(AppIntent::Video(VideoIntent::SetUrl(
+            "https://example.com/v".to_string(),
+        )));
+        store.dispatch(AppIntent::Video(VideoIntent::SetTranscript(true)));
+        store.dispatch(AppIntent::Video(VideoIntent::StartDownload));
+        store.dispatch(AppIntent::Video(VideoIntent::DownloadFinished(Ok(
+            DownloadTicket {
+                id: "vid".to_string(),
+                path: std::path::PathBuf::from("/tmp/vid.mp4"),
+            },
+        ))));
+        assert_eq!(store.state().video.status, VideoStatus::Completed);
+        assert_eq!(
+            store.state().transcript.input,
+            "https://example.com/v".to_string()
+        );
+        assert!(store.state().transcript.status.is_busy());
     }
 }
