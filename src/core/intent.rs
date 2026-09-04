@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::state::{ChannelInclude, DatePreset, HistoryFilter, HistorySort, Screen};
+use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{
     ChannelPreview, Container, DownloadProgress, DownloadTicket, TranscriptFormat,
     TranscriptResult, VideoKind, VideoMetadata, VideoQuality,
@@ -83,7 +84,16 @@ pub enum HistoryIntent {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ConsoleIntent {
+    ToggleLevel(LogLevel),
+    SetSource(String),
+    SetQuery(String),
+    TogglePause,
+    ToggleAutoscroll,
+    CopyAll,
+    ExportLogs,
+    ExportPathChosen(Option<PathBuf>),
     Clear,
+    JumpToBottom,
 }
 
 #[derive(Debug, Clone)]

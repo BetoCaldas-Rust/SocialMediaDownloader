@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use chrono::NaiveDate;
 
+use crate::services::log_buffer::LogEntry;
 use crate::services::traits::{
     ChannelPreview, Container, TranscriptFormat, TranscriptOrder, TranscriptResult, VideoMetadata,
     VideoQuality,
@@ -306,9 +307,36 @@ pub struct HistoryState {
     pub confirm_clear: bool,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-pub struct ConsoleState {}
+#[derive(Debug, Clone)]
+pub struct ConsoleState {
+    pub show_error: bool,
+    pub show_warn: bool,
+    pub show_info: bool,
+    pub show_debug: bool,
+    pub source: String,
+    pub query: String,
+    pub paused: bool,
+    pub autoscroll: bool,
+    pub paused_len: usize,
+    pub frozen: Option<Vec<LogEntry>>,
+}
+
+impl Default for ConsoleState {
+    fn default() -> Self {
+        Self {
+            show_error: true,
+            show_warn: true,
+            show_info: true,
+            show_debug: false,
+            source: "all".to_string(),
+            query: String::new(),
+            paused: false,
+            autoscroll: true,
+            paused_len: 0,
+            frozen: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SettingsState {

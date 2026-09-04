@@ -9,7 +9,9 @@ use tokio::sync::Semaphore;
 use tokio::task::{JoinHandle, JoinSet};
 
 use super::effect::Effect;
-use super::intent::{AppIntent, ChannelIntent, SettingsIntent, TranscriptIntent, VideoIntent};
+use super::intent::{
+    AppIntent, ChannelIntent, ConsoleIntent, SettingsIntent, TranscriptIntent, VideoIntent,
+};
 use super::state::{
     apply_config_defaults, AppState, Notice, Screen, SettingsState, TranscriptStatus, VideoStatus,
 };
@@ -354,6 +356,9 @@ impl Store {
                 Effect::UpdateYtDlp => self.spawn_ytdlp_update(),
                 Effect::VerifyAutostart => self.spawn_autostart_verify(),
                 Effect::SetAutostart(enabled) => self.spawn_autostart_set(*enabled),
+                Effect::CopyFiltered => self.exec_copy_filtered(),
+                Effect::RequestExportPath => self.spawn_export_picker(),
+                Effect::WriteExportFile { path } => self.spawn_export_write(path.clone()),
             }
         }
     }
@@ -634,6 +639,65 @@ impl Store {
             let _ = intent_tx.send(AppIntent::Settings(SettingsIntent::DownloadDirPicked(
                 picked,
             )));
+        });
+    }
+
+    fn record_console(&mut self, level: LogLevel, message: &str) {
+        self.log_sink.push(level, "console", message);
+        self.append_log_file(level, "console", message);
+    }
+
+    fn exec_copy_filtered(&mut self) {
+        let entries = crate::services::log_buffer::log_entries();
+        let lines = crate::features::console::update::filtered_lines(&entries, &self.state.console);
+        let count = lines.len();
+        let text = lines.join("\n");
+        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
+            Ok(()) => self.record_console(
+                LogLevel::Info,
+                &format!("console copied {count} filtered lines"),
+            ),
+            Err(err) => self.record_console(LogLevel::Warn, &format!("console copy failed: {err}")),
+        }
+    }
+
+    /// `rfd::FileDialog::save_file` blocks, so it runs on a blocking
+    /// thread and reports back as an intent; the UI thread never waits.
+    fn spawn_export_picker(&mut self) {
+        let Some(runtime) = self.runtime.clone() else {
+            return;
+        };
+        let intent_tx = self.intent_tx.clone();
+        runtime.spawn_blocking(move || {
+            let picked = rfd::FileDialog::new()
+                .add_filter("Log", &["log"])
+                .set_file_name("console.log")
+                .save_file();
+            let _ = intent_tx.send(AppIntent::Console(ConsoleIntent::ExportPathChosen(picked)));
+        });
+    }
+
+    fn spawn_export_write(&mut self, path: PathBuf) {
+        let entries = crate::services::log_buffer::log_entries();
+        let lines = crate::features::console::update::filtered_lines(&entries, &self.state.console);
+        let count = lines.len();
+        let body = lines.join("\n");
+        let Some(runtime) = self.runtime.clone() else {
+            self.record_console(LogLevel::Warn, "console export failed: runtime unavailable");
+            return;
+        };
+        let sink = self.log_sink.clone();
+        runtime.spawn_blocking(move || match std::fs::write(&path, body) {
+            Ok(()) => sink.push(
+                LogLevel::Info,
+                "console",
+                &format!("console exported {count} filtered lines"),
+            ),
+            Err(err) => sink.push(
+                LogLevel::Error,
+                "console",
+                &format!("console export failed: {err}"),
+            ),
         });
     }
 

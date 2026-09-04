@@ -65,11 +65,15 @@ impl LogLevelSetting {
         }
     }
 
+    /// Hierarchy helper kept for tests and future filters; the live
+    /// tracing backend is driven by `tracing_filter` instead.
+    #[allow(dead_code)]
     pub fn allows(self, level: LogLevel) -> bool {
         rank(level) <= rank_setting(self)
     }
 }
 
+#[allow(dead_code)]
 fn rank(level: LogLevel) -> u8 {
     match level {
         LogLevel::Error => 0,
@@ -79,6 +83,7 @@ fn rank(level: LogLevel) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn rank_setting(setting: LogLevelSetting) -> u8 {
     match setting {
         LogLevelSetting::Error => 0,

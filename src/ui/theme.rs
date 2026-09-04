@@ -23,6 +23,7 @@ pub const LOG_WARN: Color32 = Color32::from_rgb(255, 184, 0);
 pub const LOG_INFO: Color32 = Color32::from_rgb(74, 222, 128);
 pub const LOG_DEBUG: Color32 = Color32::from_rgb(142, 142, 147);
 pub const LOG_SOURCE: Color32 = Color32::from_rgb(122, 183, 255);
+pub const LOG_ERROR_BG: Color32 = Color32::from_rgb(58, 26, 26);
 #[allow(dead_code)]
 pub const LOG_PATH: Color32 = Color32::from_rgb(196, 165, 255);
 

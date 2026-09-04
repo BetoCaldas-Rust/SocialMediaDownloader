@@ -48,4 +48,9 @@ pub enum Effect {
     UpdateYtDlp,
     VerifyAutostart,
     SetAutostart(bool),
+    CopyFiltered,
+    RequestExportPath,
+    WriteExportFile {
+        path: PathBuf,
+    },
 }
