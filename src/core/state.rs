@@ -6,6 +6,7 @@ use crate::services::traits::{
     ChannelPreview, Container, TranscriptFormat, TranscriptOrder, TranscriptResult, VideoMetadata,
     VideoQuality,
 };
+use crate::storage::config::{AppConfig, LogLevelSetting};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Screen {
@@ -309,9 +310,86 @@ pub struct HistoryState {
 #[derive(Debug, Clone, Default)]
 pub struct ConsoleState {}
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
-pub struct SettingsState {}
+#[derive(Debug, Clone)]
+pub struct SettingsState {
+    pub locale: String,
+    pub download_dir: Option<PathBuf>,
+    pub quality_default: VideoQuality,
+    pub organize_by_channel: bool,
+    pub simultaneous: u8,
+    pub transcript_lang: String,
+    pub transcript_format: TranscriptFormat,
+    pub transcript_fallback: Option<String>,
+    pub transcript_accept_auto: bool,
+    pub transcript_timestamps: bool,
+    pub start_with_windows: bool,
+    pub minimize_to_tray: bool,
+    pub notify_on_complete: bool,
+    pub log_level: LogLevelSetting,
+    pub save_logs: bool,
+    pub ytdlp_version: Option<String>,
+    pub ytdlp_error: Option<String>,
+    pub ytdlp_checking: bool,
+    pub autostart_actual: Option<bool>,
+}
+
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self::from_config(&AppConfig::default())
+    }
+}
+
+impl SettingsState {
+    pub fn from_config(config: &AppConfig) -> Self {
+        Self {
+            locale: config.locale.clone(),
+            download_dir: config.download_dir.clone(),
+            quality_default: config.quality_default,
+            organize_by_channel: config.organize_by_channel,
+            simultaneous: config.simultaneous,
+            transcript_lang: config.transcript_lang.clone(),
+            transcript_format: config.transcript_format,
+            transcript_fallback: config.transcript_fallback.clone(),
+            transcript_accept_auto: config.transcript_accept_auto,
+            transcript_timestamps: config.transcript_timestamps,
+            start_with_windows: config.start_with_windows,
+            minimize_to_tray: config.minimize_to_tray,
+            notify_on_complete: config.notify_on_complete,
+            log_level: config.log_level,
+            save_logs: config.save_logs,
+            ytdlp_version: None,
+            ytdlp_error: None,
+            ytdlp_checking: false,
+            autostart_actual: None,
+        }
+    }
+
+    pub fn apply_to_config(&self, config: &mut AppConfig) {
+        config.locale = self.locale.clone();
+        config.download_dir = self.download_dir.clone();
+        config.quality_default = self.quality_default;
+        config.organize_by_channel = self.organize_by_channel;
+        config.simultaneous = self.simultaneous;
+        config.transcript_lang = self.transcript_lang.clone();
+        config.transcript_format = self.transcript_format;
+        config.transcript_fallback = self.transcript_fallback.clone();
+        config.transcript_accept_auto = self.transcript_accept_auto;
+        config.transcript_timestamps = self.transcript_timestamps;
+        config.start_with_windows = self.start_with_windows;
+        config.minimize_to_tray = self.minimize_to_tray;
+        config.notify_on_complete = self.notify_on_complete;
+        config.log_level = self.log_level;
+        config.save_logs = self.save_logs;
+        config.validate();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    pub id: String,
+    pub message_key: String,
+    pub detail: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -323,6 +401,7 @@ pub struct AppState {
     pub history: HistoryState,
     pub console: ConsoleState,
     pub settings: SettingsState,
+    pub notices: Vec<Notice>,
 }
 
 impl Default for AppState {
@@ -336,6 +415,23 @@ impl Default for AppState {
             history: HistoryState::default(),
             console: ConsoleState::default(),
             settings: SettingsState::default(),
+            notices: Vec::new(),
         }
     }
+}
+
+/// Seeds tab-local session state from settings at startup. Settings own
+/// the persisted defaults; the video/channel/transcript tabs may diverge
+/// afterwards without writing back to the config.
+pub fn apply_config_defaults(state: &mut AppState, config: &AppConfig) {
+    state.video.quality = config.quality_default;
+    state.channel.quality = config.quality_default;
+    state.transcript.lang = config.transcript_lang.clone();
+    state.transcript.format = config.transcript_format;
+    state.transcript.fallback = config
+        .transcript_fallback
+        .clone()
+        .unwrap_or_else(|| "off".to_string());
+    state.transcript.accept_auto = config.transcript_accept_auto;
+    state.transcript.timestamps = config.transcript_timestamps;
 }

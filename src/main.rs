@@ -8,10 +8,11 @@ mod ui;
 use ui::app::SmdApp;
 
 fn main() -> Result<(), eframe::Error> {
-    services::log_buffer::init_tracing();
+    let config = storage::config::AppConfig::load();
+    let level_handle = services::log_buffer::init_tracing(config.log_level.tracing_filter());
+    crate::core::store::prune_startup_logs();
     let locales_dir = i18n::loader::resolve_locales_dir();
     i18n::registry::init_i18n(locales_dir);
-    let config = storage::config::AppConfig::load();
     i18n::registry::set_locale(&config.locale);
     let title = i18n::registry::t("app_title");
     tracing::info!(target: "startup", "starting {title}");
@@ -25,6 +26,6 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Social Media Downloader",
         options,
-        Box::new(|creation| Ok(Box::new(SmdApp::new(creation)))),
+        Box::new(move |creation| Ok(Box::new(SmdApp::new(creation, config, Some(level_handle))))),
     )
 }

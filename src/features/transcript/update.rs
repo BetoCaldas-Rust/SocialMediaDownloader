@@ -69,6 +69,10 @@ pub fn apply(model: &mut TranscriptModel, intent: &TranscriptIntent) -> Vec<Effe
 }
 
 pub fn order_from(model: &TranscriptModel) -> TranscriptOrder {
+    order_from_in(model, &default_download_dir())
+}
+
+pub fn order_from_in(model: &TranscriptModel, output_dir: &std::path::Path) -> TranscriptOrder {
     TranscriptOrder {
         url: model.input.trim().to_string(),
         lang: model.lang.clone(),
@@ -76,7 +80,7 @@ pub fn order_from(model: &TranscriptModel) -> TranscriptOrder {
         fallback: normalized_fallback(model),
         accept_auto: model.accept_auto,
         timestamps: model.timestamps,
-        output_dir: default_download_dir(),
+        output_dir: output_dir.to_path_buf(),
     }
 }
 
@@ -322,6 +326,17 @@ mod tests {
         apply(&mut model, &TranscriptIntent::ToggleAuto);
         assert_eq!(model.lang, "pt");
         assert!(model.accept_auto);
+    }
+
+    #[test]
+    fn order_uses_given_output_dir() {
+        let model = model_with_input();
+        let order = order_from_in(&model, std::path::Path::new("/tmp/smd-custom"));
+        assert_eq!(
+            order.output_dir,
+            std::path::PathBuf::from("/tmp/smd-custom")
+        );
+        assert_eq!(order.lang, "pt");
     }
 
     #[test]

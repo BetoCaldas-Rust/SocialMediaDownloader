@@ -7,7 +7,6 @@ use crate::core::store::Store;
 use crate::features::history::update::{apply_filter, apply_sort, format_size, format_when};
 use crate::i18n::registry::t;
 use crate::services::traits::{EntryKind, HistoryEntry};
-use crate::services::yt_dlp::downloader::default_download_dir;
 use crate::services::yt_dlp::transcript::{
     parse_no_transcript_error, transcript_error_display_key,
 };
@@ -127,8 +126,8 @@ fn render_row(ui: &mut Ui, store: &mut Store, entry: &HistoryEntry, now_ms: i64)
                     &t("history_today"),
                     &t("history_yesterday"),
                 ))
-                    .small()
-                    .weak(),
+                .small()
+                .weak(),
             );
             ui.label(egui::RichText::new(size_label(entry)).monospace().small());
         });
@@ -151,7 +150,7 @@ fn size_label(entry: &HistoryEntry) -> String {
 
 fn render_statusbar(ui: &mut Ui, store: &mut Store) {
     let summary = store.history_totals();
-    let folder = default_download_dir().display().to_string();
+    let folder = store.download_dir().display().to_string();
     ui.group(|ui| {
         ui.label(format!(
             "{} {} · {} {} · {} {} · {}",

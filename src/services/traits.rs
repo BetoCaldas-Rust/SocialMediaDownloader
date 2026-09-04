@@ -19,7 +19,8 @@ pub struct VideoMetadata {
 /// Quality chosen in the UI. The yt-dlp `-f` mapping lives in
 /// [`crate::services::yt_dlp::downloader::format_arg`] so the UI,
 /// the order DTO and the sidecar call share one definition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum VideoQuality {
     #[default]
     Best,

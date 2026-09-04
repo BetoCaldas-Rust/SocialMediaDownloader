@@ -4,7 +4,6 @@ use crate::core::effect::Effect;
 use crate::core::state::{HistoryFilter, HistorySort};
 use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{EntryKind, EntryStatus, HistoryEntry};
-use crate::services::yt_dlp::downloader::default_download_dir;
 
 use super::intent::HistoryIntent;
 use super::model::HistoryModel;
@@ -16,10 +15,11 @@ pub struct HistoryTotals {
     pub failures: usize,
 }
 
-pub fn apply(
+pub fn apply_in(
     model: &mut HistoryModel,
     intent: &HistoryIntent,
     entries: &[HistoryEntry],
+    download_dir: &std::path::Path,
 ) -> Vec<Effect> {
     match intent {
         HistoryIntent::SetFilter(filter) => {
@@ -51,7 +51,7 @@ pub fn apply(
             }
         }
         HistoryIntent::OpenDownloadsFolder => {
-            vec![Effect::RevealInFolder(default_download_dir())]
+            vec![Effect::RevealInFolder(download_dir.to_path_buf())]
         }
         HistoryIntent::RevealEntry(id) => match entries.iter().find(|entry| entry.id == *id) {
             Some(entry) => match &entry.path {
@@ -194,6 +194,10 @@ mod tests {
     use super::*;
     use crate::services::traits::{EntryStatus, TranscriptOrder};
     use chrono::TimeZone;
+
+    fn test_dir() -> &'static std::path::Path {
+        std::path::Path::new("/tmp")
+    }
 
     fn entry(
         id: &str,
@@ -379,10 +383,7 @@ mod tests {
             .map(|date| date.timestamp_millis())
             .unwrap_or_default();
         assert_eq!(format_when(today, now, "Hoje", "Ontem"), "Hoje, 09:05");
-        assert_eq!(
-            format_when(yesterday, now, "Hoje", "Ontem"),
-            "Ontem, 22:10"
-        );
+        assert_eq!(format_when(yesterday, now, "Hoje", "Ontem"), "Ontem, 22:10");
         assert_eq!(format_when(older, now, "Hoje", "Ontem"), "05 Jan, 08:30");
     }
 
@@ -397,11 +398,11 @@ mod tests {
     #[test]
     fn clear_requires_confirm_flag() {
         let mut model = HistoryModel::default();
-        let effects = apply(&mut model, &HistoryIntent::ClearHistory, &[]);
+        let effects = apply_in(&mut model, &HistoryIntent::ClearHistory, &[], test_dir());
         assert!(effects.is_empty());
-        apply(&mut model, &HistoryIntent::RequestClear, &[]);
+        apply_in(&mut model, &HistoryIntent::RequestClear, &[], test_dir());
         assert!(model.confirm_clear);
-        let effects = apply(&mut model, &HistoryIntent::ClearHistory, &[]);
+        let effects = apply_in(&mut model, &HistoryIntent::ClearHistory, &[], test_dir());
         assert!(matches!(effects.as_slice(), [Effect::ClearHistory]));
         assert!(!model.confirm_clear);
     }
@@ -412,7 +413,7 @@ mod tests {
             confirm_clear: true,
             ..Default::default()
         };
-        apply(&mut model, &HistoryIntent::CancelClear, &[]);
+        apply_in(&mut model, &HistoryIntent::CancelClear, &[], test_dir());
         assert!(!model.confirm_clear);
     }
 
@@ -420,10 +421,11 @@ mod tests {
     fn retry_emits_effect_with_entry_data() {
         let entries = matrix();
         let mut model = HistoryModel::default();
-        let effects = apply(
+        let effects = apply_in(
             &mut model,
             &HistoryIntent::RetryEntry("t1".to_string()),
             &entries,
+            test_dir(),
         );
         assert!(matches!(
             effects.as_slice(),
@@ -434,10 +436,11 @@ mod tests {
     #[test]
     fn retry_missing_id_emits_warning() {
         let mut model = HistoryModel::default();
-        let effects = apply(
+        let effects = apply_in(
             &mut model,
             &HistoryIntent::RetryEntry("nope".to_string()),
             &matrix(),
+            test_dir(),
         );
         assert!(matches!(effects.as_slice(), [Effect::PushLog { .. }]));
     }
@@ -464,19 +467,37 @@ mod tests {
     }
 
     #[test]
+    fn open_folder_uses_settings_dir() {
+        let mut model = HistoryModel::default();
+        let custom = std::path::Path::new("/tmp/smd-custom");
+        let effects = apply_in(&mut model, &HistoryIntent::OpenDownloadsFolder, &[], custom);
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::RevealInFolder(path)] if path == custom
+        ));
+    }
+
+    #[test]
     fn filter_and_sort_intents_update_model() {
         let mut model = HistoryModel::default();
-        apply(
+        apply_in(
             &mut model,
             &HistoryIntent::SetFilter(HistoryFilter::Failures),
             &[],
+            test_dir(),
         );
-        apply(
+        apply_in(
             &mut model,
             &HistoryIntent::SetQuery("cats".to_string()),
             &[],
+            test_dir(),
         );
-        apply(&mut model, &HistoryIntent::SetSort(HistorySort::Name), &[]);
+        apply_in(
+            &mut model,
+            &HistoryIntent::SetSort(HistorySort::Name),
+            &[],
+            test_dir(),
+        );
         assert_eq!(model.filter, HistoryFilter::Failures);
         assert_eq!(model.query, "cats");
         assert_eq!(model.sort, HistorySort::Name);

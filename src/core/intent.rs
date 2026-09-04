@@ -1,8 +1,11 @@
+use std::path::PathBuf;
+
 use super::state::{ChannelInclude, DatePreset, HistoryFilter, HistorySort, Screen};
 use crate::services::traits::{
     ChannelPreview, Container, DownloadProgress, DownloadTicket, TranscriptFormat,
     TranscriptResult, VideoKind, VideoMetadata, VideoQuality,
 };
+use crate::storage::config::LogLevelSetting;
 
 #[derive(Debug, Clone)]
 pub enum VideoIntent {
@@ -83,10 +86,30 @@ pub enum ConsoleIntent {
     Clear,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum SettingsIntent {
     ChangeLocale(String),
+    PickDownloadDir,
+    DownloadDirPicked(Option<PathBuf>),
+    SetDownloadDir(Option<PathBuf>),
+    SetQualityDefault(VideoQuality),
+    SetOrganize(bool),
+    SetSimultaneous(u8),
+    SetTranscriptLang(String),
+    SetTranscriptFormat(TranscriptFormat),
+    SetTranscriptFallback(Option<String>),
+    ToggleTranscriptAuto,
+    ToggleTranscriptTimestamps,
+    SetAutostart(bool),
+    AutostartVerified(Option<bool>),
+    SetMinimizeTray(bool),
+    SetNotify(bool),
+    SetLogLevel(LogLevelSetting),
+    SetSaveLogs(bool),
+    CheckYtDlp,
+    YtDlpVersionReceived(Result<String, String>),
+    UpdateYtDlp,
+    YtDlpUpdated(Result<String, String>),
 }
 
 #[derive(Debug, Clone)]
@@ -100,4 +123,5 @@ pub enum AppIntent {
     #[allow(dead_code)]
     Console(ConsoleIntent),
     Settings(SettingsIntent),
+    DismissNotice(String),
 }

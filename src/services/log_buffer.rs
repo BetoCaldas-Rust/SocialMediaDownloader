@@ -4,9 +4,11 @@ use std::sync::{OnceLock, RwLock};
 
 use tracing::field::Field;
 use tracing::{Event, Subscriber};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::reload::{Handle, Layer as ReloadLayer};
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
+use tracing_subscriber::{Layer, Registry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
@@ -118,11 +120,16 @@ where
     }
 }
 
-pub fn init_tracing() {
+pub type LevelHandle = Handle<LevelFilter, Registry>;
+
+pub fn init_tracing(initial: LevelFilter) -> LevelHandle {
+    let (filter, handle) = ReloadLayer::new(initial);
     let _ = tracing_subscriber::registry()
+        .with(filter)
         .with(tracing_subscriber::fmt::layer())
         .with(LogBufferLayer)
         .try_init();
+    handle
 }
 
 #[cfg(test)]

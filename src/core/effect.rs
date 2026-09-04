@@ -4,6 +4,7 @@ use crate::services::log_buffer::LogLevel;
 use crate::services::traits::{
     BatchItem, ChannelOrder, HistoryEntry, TranscriptOrder, VideoQuality,
 };
+use crate::storage::config::LogLevelSetting;
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -40,4 +41,11 @@ pub enum Effect {
     RecordHistory(Box<HistoryEntry>),
     RetryEntry(Box<HistoryEntry>),
     ClearHistory,
+    SaveSettings,
+    ApplyLogLevel(LogLevelSetting),
+    PickDownloadDir,
+    CheckYtDlpVersion,
+    UpdateYtDlp,
+    VerifyAutostart,
+    SetAutostart(bool),
 }

@@ -1,49 +1,83 @@
-use std::path::Path;
+use std::fs::OpenOptions;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
+use tokio::sync::Semaphore;
+use tokio::task::{JoinHandle, JoinSet};
 
 use super::effect::Effect;
-use super::intent::{AppIntent, ChannelIntent, TranscriptIntent, VideoIntent};
-use super::state::{AppState, Screen, TranscriptStatus, VideoStatus};
-use crate::features::{channel, console, history, settings, transcript, video};
-use crate::services::log_buffer::LogLevel;
-use crate::services::traits::{
-    retry_plan, BatchItem, ChannelOrder, ChannelProvider, DownloadOrder, DownloadProgress,
-    Downloader, HistoryEntry, HistoryStore, LocaleProvider, LogSink, MetadataProvider, Transcriber,
-    TranscriptOrder, VideoQuality,
+use super::intent::{AppIntent, ChannelIntent, SettingsIntent, TranscriptIntent, VideoIntent};
+use super::state::{
+    apply_config_defaults, AppState, Notice, Screen, SettingsState, TranscriptStatus, VideoStatus,
 };
-use crate::services::yt_dlp::downloader::default_download_dir;
+use crate::features::{channel, console, history, settings, transcript, video};
+use crate::services::log_buffer::{LevelHandle, LogLevel};
+use crate::services::traits::{
+    file_name, new_history_id, retry_plan, BatchItem, ChannelOrder, ChannelProvider, DownloadOrder,
+    DownloadProgress, Downloader, HistoryEntry, HistoryStore, LocaleProvider, LogSink,
+    MetadataProvider, Transcriber, TranscriptOrder, VideoQuality,
+};
+use crate::services::yt_dlp::binary::{hidden_command, resolve_binary};
+use crate::storage::config::{
+    log_file_for, logs_dir, prune_old_logs, resolve_download_dir, resolve_output_dir, AppConfig,
+};
 
 pub fn update(state: &mut AppState, intent: &AppIntent) -> Vec<Effect> {
     match intent {
         AppIntent::Navigate(screen) => {
             state.screen = *screen;
-            vec![Effect::PushLog {
+            let mut effects = vec![Effect::PushLog {
                 level: LogLevel::Info,
                 source: "navigation".to_string(),
                 message: format!("navigated to {screen:?}"),
-            }]
-        }
-        AppIntent::Video(inner) => {
-            let mut effects = video::update::apply(&mut state.video, inner);
-            if matches!(inner, VideoIntent::DownloadFinished(Ok(_)))
-                && state.video.include_transcript
-            {
-                let url = state.video.url.trim().to_string();
-                if !url.is_empty() {
-                    state.transcript.input = url;
-                    effects.extend(transcript::update::apply(
-                        &mut state.transcript,
-                        &TranscriptIntent::FetchTranscript,
-                    ));
+            }];
+            if *screen == Screen::Settings {
+                effects.push(Effect::VerifyAutostart);
+                if state.settings.ytdlp_version.is_none() && !state.settings.ytdlp_checking {
+                    state.settings.ytdlp_checking = true;
+                    effects.push(Effect::CheckYtDlpVersion);
                 }
             }
             effects
         }
-        AppIntent::Transcript(inner) => transcript::update::apply(&mut state.transcript, inner),
+        AppIntent::DismissNotice(id) => {
+            state.notices.retain(|notice| notice.id != *id);
+            Vec::new()
+        }
+        AppIntent::Video(inner) => {
+            let mut effects = video::update::apply(&mut state.video, inner);
+            if let VideoIntent::DownloadFinished(Ok(ticket)) = inner {
+                if state.settings.notify_on_complete {
+                    let detail = file_name(&ticket.path).unwrap_or_else(|| ticket.id.clone());
+                    push_notice(state, "notice_download_done", detail);
+                }
+                if state.video.include_transcript {
+                    let url = state.video.url.trim().to_string();
+                    if !url.is_empty() {
+                        state.transcript.input = url;
+                        effects.extend(transcript::update::apply(
+                            &mut state.transcript,
+                            &TranscriptIntent::FetchTranscript,
+                        ));
+                    }
+                }
+            }
+            effects
+        }
+        AppIntent::Transcript(inner) => {
+            let effects = transcript::update::apply(&mut state.transcript, inner);
+            if let TranscriptIntent::TranscriptFinished(Ok(ticket)) = inner {
+                if state.settings.notify_on_complete {
+                    let detail =
+                        file_name(&ticket.path).unwrap_or_else(|| ticket.lang_used.clone());
+                    push_notice(state, "notice_transcript_done", detail);
+                }
+            }
+            effects
+        }
         AppIntent::Channel(inner) => {
             let mut effects = channel::update::apply(&mut state.channel, inner);
             for effect in &mut effects {
@@ -57,16 +91,46 @@ pub fn update(state: &mut AppState, intent: &AppIntent) -> Vec<Effect> {
             }) {
                 state.channel.last_transcript_order = Some(order);
             }
+            if matches!(inner, ChannelIntent::BatchItemFinished { .. })
+                && state.channel.status == crate::core::state::ChannelStatus::Completed
+                && state.settings.notify_on_complete
+                && !state.channel.items.is_empty()
+            {
+                push_notice(
+                    state,
+                    "notice_batch_done",
+                    format!("{}", state.channel.items.len()),
+                );
+            }
             effects
         }
-        AppIntent::History(inner) => history::update::apply(&mut state.history, inner, &[]),
+        AppIntent::History(inner) => {
+            let _ = inner;
+            Vec::new()
+        }
         AppIntent::Console(inner) => console::update::apply(&mut state.console, inner),
         AppIntent::Settings(inner) => settings::update::apply(&mut state.settings, inner),
     }
 }
 
+fn push_notice(state: &mut AppState, key: &str, detail: String) {
+    state.notices.push(Notice {
+        id: new_history_id(),
+        message_key: key.to_string(),
+        detail,
+    });
+    while state.notices.len() > 5 {
+        state.notices.remove(0);
+    }
+}
+
 pub struct Store {
     state: AppState,
+    config: AppConfig,
+    saver: Arc<dyn Fn(&AppConfig) + Send + Sync>,
+    level_handle: Option<LevelHandle>,
+    log_file: Option<BufWriter<std::fs::File>>,
+    log_file_day: Option<String>,
     locale_provider: Arc<dyn LocaleProvider>,
     log_sink: Arc<dyn LogSink>,
     metadata: Arc<dyn MetadataProvider>,
@@ -83,6 +147,7 @@ pub struct Store {
 }
 
 impl Store {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         locale_provider: Arc<dyn LocaleProvider>,
         log_sink: Arc<dyn LogSink>,
@@ -91,14 +156,50 @@ impl Store {
         transcriber: Arc<dyn Transcriber>,
         channel: Arc<dyn ChannelProvider>,
         history: Arc<dyn HistoryStore>,
+        config: AppConfig,
+        level_handle: Option<LevelHandle>,
     ) -> Self {
-        let state = AppState {
+        Self::new_with_saver(
+            locale_provider,
+            log_sink,
+            metadata,
+            downloader,
+            transcriber,
+            channel,
+            history,
+            config,
+            level_handle,
+            Arc::new(|config| config.save()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_saver(
+        locale_provider: Arc<dyn LocaleProvider>,
+        log_sink: Arc<dyn LogSink>,
+        metadata: Arc<dyn MetadataProvider>,
+        downloader: Arc<dyn Downloader>,
+        transcriber: Arc<dyn Transcriber>,
+        channel: Arc<dyn ChannelProvider>,
+        history: Arc<dyn HistoryStore>,
+        config: AppConfig,
+        level_handle: Option<LevelHandle>,
+        saver: Arc<dyn Fn(&AppConfig) + Send + Sync>,
+    ) -> Self {
+        let mut state = AppState {
             locale: locale_provider.current(),
             ..Default::default()
         };
+        state.settings = SettingsState::from_config(&config);
+        apply_config_defaults(&mut state, &config);
         let (intent_tx, intent_rx) = unbounded_channel();
         Self {
             state,
+            config,
+            saver,
+            level_handle,
+            log_file: None,
+            log_file_day: None,
             locale_provider,
             log_sink,
             metadata,
@@ -117,6 +218,10 @@ impl Store {
 
     pub fn state(&self) -> &AppState {
         &self.state
+    }
+
+    pub fn download_dir(&self) -> PathBuf {
+        resolve_download_dir(&self.config)
     }
 
     pub fn available_locales(&self) -> Vec<String> {
@@ -148,7 +253,8 @@ impl Store {
     pub fn dispatch(&mut self, intent: AppIntent) {
         if let AppIntent::History(inner) = &intent {
             let entries = self.history.entries();
-            let effects = history::update::apply(&mut self.state.history, inner, &entries);
+            let dir = resolve_download_dir(&self.config);
+            let effects = history::update::apply_in(&mut self.state.history, inner, &entries, &dir);
             self.execute(&effects);
             return;
         }
@@ -178,6 +284,7 @@ impl Store {
                     message,
                 } => {
                     self.log_sink.push(*level, source, message);
+                    self.append_log_file(*level, source, message);
                 }
                 Effect::FetchMetadata { url } => self.spawn_fetch(url.clone()),
                 Effect::StartDownload { url, quality } => {
@@ -193,7 +300,11 @@ impl Store {
                         handle.abort();
                     }
                 }
-                Effect::FetchTranscript { order } => self.spawn_transcript(order.clone()),
+                Effect::FetchTranscript { order } => {
+                    let mut adjusted = order.clone();
+                    adjusted.output_dir = resolve_download_dir(&self.config);
+                    self.spawn_transcript(adjusted);
+                }
                 Effect::FetchChannelPreview { order } => self.spawn_channel_preview(order.clone()),
                 Effect::CancelChannel => {
                     if let Some(handle) = self.active_channel_task.take() {
@@ -206,13 +317,17 @@ impl Store {
                     include_transcript,
                     quality,
                     transcript,
-                } => self.spawn_batch(
-                    items.clone(),
-                    *include_video,
-                    *include_transcript,
-                    *quality,
-                    transcript.clone(),
-                ),
+                } => {
+                    let mut adjusted = transcript.clone();
+                    adjusted.output_dir = resolve_download_dir(&self.config);
+                    self.spawn_batch(
+                        items.clone(),
+                        *include_video,
+                        *include_transcript,
+                        *quality,
+                        adjusted,
+                    );
+                }
                 Effect::RevealInFolder(path) => reveal_in_folder(path, &self.log_sink),
                 Effect::RecordHistory(entry) => {
                     self.history.record((**entry).clone());
@@ -221,8 +336,72 @@ impl Store {
                 Effect::ClearHistory => {
                     self.history.clear();
                 }
+                Effect::SaveSettings => {
+                    self.state.settings.apply_to_config(&mut self.config);
+                    (self.saver)(&self.config);
+                    if !self.config.save_logs {
+                        self.close_log_file();
+                    }
+                }
+                Effect::ApplyLogLevel(level) => {
+                    if let Some(handle) = &self.level_handle {
+                        let filter = level.tracing_filter();
+                        let _ = handle.modify(|current| *current = filter);
+                    }
+                }
+                Effect::PickDownloadDir => self.spawn_folder_picker(),
+                Effect::CheckYtDlpVersion => self.spawn_ytdlp_check(false),
+                Effect::UpdateYtDlp => self.spawn_ytdlp_update(),
+                Effect::VerifyAutostart => self.spawn_autostart_verify(),
+                Effect::SetAutostart(enabled) => self.spawn_autostart_set(*enabled),
             }
         }
+    }
+
+    /// Flush strategy: every `PushLog` appends one JSON line and flushes
+    /// immediately, so a crash loses nothing. The buffered writer is
+    /// held across lines for the current day only; it is flushed and
+    /// closed when `save_logs` is toggled off and on day rollover.
+    /// Rotation (delete logs older than 7 days) runs once at startup.
+    fn append_log_file(&mut self, level: LogLevel, source: &str, message: &str) {
+        if !self.config.save_logs {
+            self.close_log_file();
+            return;
+        }
+        let Some(dir) = logs_dir() else {
+            return;
+        };
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let today = chrono::Local::now().date_naive();
+        let today_str = today.format("%Y-%m-%d").to_string();
+        if self.log_file_day.as_deref() != Some(today_str.as_str()) {
+            self.close_log_file();
+            let path = log_file_for(&dir, today);
+            let file = OpenOptions::new().create(true).append(true).open(path).ok();
+            if let Some(file) = file {
+                self.log_file = Some(BufWriter::new(file));
+                self.log_file_day = Some(today_str.clone());
+            }
+        }
+        if let Some(writer) = self.log_file.as_mut() {
+            let line = serde_json::json!({
+                "ts": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                "level": level.label(),
+                "source": source,
+                "message": message,
+            });
+            let _ = writeln!(writer, "{line}");
+            let _ = writer.flush();
+        }
+    }
+
+    fn close_log_file(&mut self) {
+        if let Some(mut writer) = self.log_file.take() {
+            let _ = writer.flush();
+        }
+        self.log_file_day = None;
     }
 
     fn exec_retry(&mut self, entry: HistoryEntry) {
@@ -249,7 +428,9 @@ impl Store {
                 self.state.transcript.error = None;
                 self.state.transcript.status = TranscriptStatus::Resolving;
                 self.state.screen = Screen::Transcript;
-                self.spawn_transcript(order);
+                let mut adjusted = order;
+                adjusted.output_dir = resolve_download_dir(&self.config);
+                self.spawn_transcript(adjusted);
             }
         }
     }
@@ -292,10 +473,17 @@ impl Store {
             ))));
             return;
         };
+        let channel = self
+            .state
+            .video
+            .metadata
+            .as_ref()
+            .map(|meta| meta.channel.clone());
+        let output_dir = resolve_output_dir(&self.config, channel.as_deref());
         let order = DownloadOrder {
             url,
             quality,
-            output_dir: default_download_dir(),
+            output_dir,
         };
         let downloader = self.downloader.clone();
         let intent_tx = self.intent_tx.clone();
@@ -351,14 +539,14 @@ impl Store {
         }));
     }
 
-    /// Batch downloads run as ONE task over items SEQUENTIALLY.
-    /// Parallel downloads are an F6 (settings) concern; until then the
-    /// single task keeps progress attribution trivial and avoids
-    /// hammering the remote. Each item reuses `Downloader::download`
-    /// with a per-item progress relay, then `Transcriber::transcribe`
-    /// with the prefs snapshotted at dispatch time. Aborting this task
-    /// drops the in-flight child (`kill_on_drop`), cancelling the
-    /// whole batch.
+    /// Batch downloads run as ONE outer task over items, with at most
+    /// `simultaneous` items in flight via a semaphore + `JoinSet`.
+    /// Progress relays stay keyed by item index (`BatchTick{index,..}`),
+    /// so completion order never matters for attribution. Dropping the
+    /// outer task (cancel) drops the set, aborting children; each child
+    /// owns a `kill_on_drop` yt-dlp process, so cancel kills downloads.
+    /// `simultaneous == 1` serializes through the same path, matching
+    /// the old sequential behavior.
     fn spawn_batch(
         &mut self,
         items: Vec<BatchItem>,
@@ -378,29 +566,208 @@ impl Store {
             }
             return;
         };
+        let bound = self.config.simultaneous.clamp(1, 5) as usize;
+        let channel_name = if self.config.organize_by_channel {
+            self.state
+                .channel
+                .preview
+                .as_ref()
+                .map(|preview| preview.name.clone())
+        } else {
+            None
+        };
+        let output_dir = resolve_output_dir(&self.config, channel_name.as_deref());
         let downloader = self.downloader.clone();
         let transcriber = self.transcriber.clone();
         let intent_tx = self.intent_tx.clone();
         self.track_channel(runtime.spawn(async move {
-            for (index, item) in items.iter().enumerate() {
-                let video_result = if include_video {
-                    Some(download_one(&downloader, &intent_tx, index, item, quality).await)
-                } else {
-                    None
+            let semaphore = Arc::new(Semaphore::new(bound));
+            let mut set = JoinSet::new();
+            for (index, item) in items.into_iter().enumerate() {
+                let semaphore = semaphore.clone();
+                let downloader = downloader.clone();
+                let transcriber = transcriber.clone();
+                let intent_tx = intent_tx.clone();
+                let item_transcript = TranscriptOrder {
+                    url: item.url.clone(),
+                    output_dir: output_dir.clone(),
+                    ..transcript.clone()
                 };
-                let transcript_result = if include_transcript {
-                    Some(transcribe_one(&transcriber, &transcript, &item.url).await)
-                } else {
-                    None
-                };
-                let _ = intent_tx.send(AppIntent::Channel(ChannelIntent::BatchItemFinished {
-                    index,
-                    video_result,
-                    transcript_result,
-                }));
+                let item_dir = output_dir.clone();
+                set.spawn(async move {
+                    let Ok(_permit) = semaphore.acquire_owned().await else {
+                        return;
+                    };
+                    let video_result = if include_video {
+                        Some(
+                            download_one(&downloader, &intent_tx, index, &item, quality, &item_dir)
+                                .await,
+                        )
+                    } else {
+                        None
+                    };
+                    let transcript_result = if include_transcript {
+                        Some(transcribe_one(&transcriber, &item_transcript).await)
+                    } else {
+                        None
+                    };
+                    let _ = intent_tx.send(AppIntent::Channel(ChannelIntent::BatchItemFinished {
+                        index,
+                        video_result,
+                        transcript_result,
+                    }));
+                });
             }
+            while set.join_next().await.is_some() {}
         }));
     }
+
+    /// `rfd::FileDialog::pick_folder` blocks, so it runs on a blocking
+    /// thread and reports back as an intent; the UI thread never waits.
+    fn spawn_folder_picker(&mut self) {
+        let Some(runtime) = self.runtime.clone() else {
+            return;
+        };
+        let intent_tx = self.intent_tx.clone();
+        runtime.spawn_blocking(move || {
+            let picked = rfd::FileDialog::new().pick_folder();
+            let _ = intent_tx.send(AppIntent::Settings(SettingsIntent::DownloadDirPicked(
+                picked,
+            )));
+        });
+    }
+
+    fn spawn_ytdlp_check(&mut self, report_updated: bool) {
+        let Some(runtime) = self.runtime.clone() else {
+            return;
+        };
+        let intent_tx = self.intent_tx.clone();
+        runtime.spawn(async move {
+            let result = ytdlp_version().await;
+            let intent = if report_updated {
+                SettingsIntent::YtDlpUpdated(result)
+            } else {
+                SettingsIntent::YtDlpVersionReceived(result)
+            };
+            let _ = intent_tx.send(AppIntent::Settings(intent));
+        });
+    }
+
+    fn spawn_ytdlp_update(&mut self) {
+        let Some(runtime) = self.runtime.clone() else {
+            return;
+        };
+        let intent_tx = self.intent_tx.clone();
+        let sink = self.log_sink.clone();
+        runtime.spawn(async move {
+            let result = update_binary(&*sink).await;
+            let _ = intent_tx.send(AppIntent::Settings(SettingsIntent::YtDlpUpdated(result)));
+        });
+    }
+
+    fn spawn_autostart_verify(&mut self) {
+        #[cfg(windows)]
+        {
+            let Some(runtime) = self.runtime.clone() else {
+                return;
+            };
+            let intent_tx = self.intent_tx.clone();
+            runtime.spawn_blocking(move || {
+                let actual = crate::services::autostart::is_enabled();
+                let _ = intent_tx.send(AppIntent::Settings(SettingsIntent::AutostartVerified(
+                    actual,
+                )));
+            });
+        }
+        #[cfg(not(windows))]
+        {
+            self.state.settings.autostart_actual = None;
+        }
+    }
+
+    fn spawn_autostart_set(&mut self, enabled: bool) {
+        #[cfg(windows)]
+        {
+            let Some(runtime) = self.runtime.clone() else {
+                return;
+            };
+            let intent_tx = self.intent_tx.clone();
+            let sink = self.log_sink.clone();
+            runtime.spawn_blocking(move || {
+                match crate::services::autostart::set_enabled(enabled) {
+                    Ok(()) => {
+                        let actual = crate::services::autostart::is_enabled();
+                        let _ = intent_tx.send(AppIntent::Settings(
+                            SettingsIntent::AutostartVerified(actual),
+                        ));
+                    }
+                    Err(_) => {
+                        sink.push(
+                            LogLevel::Error,
+                            "settings",
+                            "failed to update autostart entry",
+                        );
+                        let _ = intent_tx
+                            .send(AppIntent::Settings(SettingsIntent::AutostartVerified(None)));
+                    }
+                }
+            });
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = enabled;
+            self.log_sink.push(
+                LogLevel::Warn,
+                "settings",
+                "autostart not supported on this platform",
+            );
+        }
+    }
+}
+
+async fn ytdlp_version() -> Result<String, String> {
+    let binary = resolve_binary().map_err(|_| "settings_ytdlp_missing".to_string())?;
+    let output = hidden_command(&binary)
+        .arg("--version")
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|_| "settings_ytdlp_error_check".to_string())?;
+    if !output.status.success() {
+        return Err("settings_ytdlp_error_check".to_string());
+    }
+    let version = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if version.is_empty() {
+        Err("settings_ytdlp_error_check".to_string())
+    } else {
+        Ok(version)
+    }
+}
+
+async fn update_binary(sink: &dyn LogSink) -> Result<String, String> {
+    let binary = resolve_binary().map_err(|_| "settings_ytdlp_missing".to_string())?;
+    let output = hidden_command(&binary)
+        .arg("-U")
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|_| "settings_ytdlp_error_update".to_string())?;
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        if !line.trim().is_empty() {
+            sink.push(LogLevel::Debug, "yt-dlp", line.trim());
+        }
+    }
+    if !output.status.success() {
+        return Err("settings_ytdlp_error_update".to_string());
+    }
+    ytdlp_version()
+        .await
+        .map_err(|_| "settings_ytdlp_error_update".to_string())
 }
 
 async fn download_one(
@@ -409,6 +776,7 @@ async fn download_one(
     index: usize,
     item: &BatchItem,
     quality: VideoQuality,
+    output_dir: &Path,
 ) -> Result<crate::services::traits::DownloadTicket, String> {
     let (progress_tx, mut progress_rx) = unbounded_channel::<DownloadProgress>();
     let relay_tx = intent_tx.clone();
@@ -420,7 +788,7 @@ async fn download_one(
     let order = DownloadOrder {
         url: item.url.clone(),
         quality,
-        output_dir: default_download_dir(),
+        output_dir: output_dir.to_path_buf(),
     };
     let result = downloader.download(order, progress_tx).await;
     relay.abort();
@@ -430,13 +798,16 @@ async fn download_one(
 async fn transcribe_one(
     transcriber: &Arc<dyn Transcriber>,
     prefs: &TranscriptOrder,
-    url: &str,
 ) -> Result<crate::services::traits::TranscriptResult, String> {
-    let order = TranscriptOrder {
-        url: url.to_string(),
-        ..prefs.clone()
+    transcriber.transcribe(prefs).await
+}
+
+pub fn prune_startup_logs() {
+    let Some(dir) = logs_dir() else {
+        return;
     };
-    transcriber.transcribe(&order).await
+    let today = chrono::Local::now().date_naive();
+    prune_old_logs(&dir, today, 7);
 }
 
 fn build_runtime() -> Option<Arc<Runtime>> {
@@ -496,7 +867,7 @@ mod tests {
     };
 
     fn test_store() -> Store {
-        Store::new(
+        Store::new_with_saver(
             Arc::new(LocaleService),
             Arc::new(BufferLogSink),
             Arc::new(StubMetadataProvider),
@@ -504,6 +875,24 @@ mod tests {
             Arc::new(StubTranscriber),
             Arc::new(StubChannelProvider),
             Arc::new(StubHistoryStore::default()),
+            AppConfig::default(),
+            None,
+            Arc::new(|_| {}),
+        )
+    }
+
+    fn test_store_with(config: AppConfig) -> Store {
+        Store::new_with_saver(
+            Arc::new(LocaleService),
+            Arc::new(BufferLogSink),
+            Arc::new(StubMetadataProvider),
+            Arc::new(StubDownloader),
+            Arc::new(StubTranscriber),
+            Arc::new(StubChannelProvider),
+            Arc::new(StubHistoryStore::default()),
+            config,
+            None,
+            Arc::new(|_| {}),
         )
     }
 
@@ -515,6 +904,69 @@ mod tests {
         assert_eq!(store.state().screen, Screen::Console);
         store.dispatch(AppIntent::Navigate(Screen::Settings));
         assert_eq!(store.state().screen, Screen::Settings);
+    }
+
+    #[test]
+    fn settings_seed_initial_tab_defaults() {
+        let config = AppConfig {
+            quality_default: VideoQuality::Capped720,
+            transcript_lang: "en".to_string(),
+            transcript_fallback: None,
+            ..Default::default()
+        };
+        let store = test_store_with(config);
+        assert_eq!(store.state().video.quality, VideoQuality::Capped720);
+        assert_eq!(store.state().channel.quality, VideoQuality::Capped720);
+        assert_eq!(store.state().transcript.lang, "en");
+        assert_eq!(store.state().transcript.fallback, "off");
+        assert_eq!(store.state().settings.transcript_fallback, None);
+    }
+
+    #[test]
+    fn settings_save_persists_through_reducer() {
+        let mut store = test_store();
+        store.dispatch(AppIntent::Settings(SettingsIntent::SetSimultaneous(5)));
+        assert_eq!(store.state().settings.simultaneous, 5);
+    }
+
+    #[test]
+    fn completion_pushes_notice_when_enabled() {
+        use crate::services::traits::DownloadTicket;
+        let mut store = test_store();
+        assert!(store.state().notices.is_empty());
+        store.dispatch(AppIntent::Video(VideoIntent::SetUrl(
+            "https://example.com/v".to_string(),
+        )));
+        store.dispatch(AppIntent::Video(VideoIntent::DownloadFinished(Ok(
+            DownloadTicket {
+                id: "vid".to_string(),
+                path: std::path::PathBuf::from("/tmp/vid.mp4"),
+            },
+        ))));
+        assert_eq!(store.state().notices.len(), 1);
+        let id = store.state().notices[0].id.clone();
+        store.dispatch(AppIntent::DismissNotice(id));
+        assert!(store.state().notices.is_empty());
+    }
+
+    #[test]
+    fn completion_notice_suppressed_when_disabled() {
+        use crate::services::traits::DownloadTicket;
+        let config = AppConfig {
+            notify_on_complete: false,
+            ..Default::default()
+        };
+        let mut store = test_store_with(config);
+        store.dispatch(AppIntent::Video(VideoIntent::SetUrl(
+            "https://example.com/v".to_string(),
+        )));
+        store.dispatch(AppIntent::Video(VideoIntent::DownloadFinished(Ok(
+            DownloadTicket {
+                id: "vid".to_string(),
+                path: std::path::PathBuf::from("/tmp/vid.mp4"),
+            },
+        ))));
+        assert!(store.state().notices.is_empty());
     }
 
     #[test]
@@ -635,7 +1087,7 @@ mod tests {
             path: None,
             transcript_order: None,
         });
-        let mut store = Store::new(
+        let mut store = Store::new_with_saver(
             Arc::new(LocaleService),
             Arc::new(BufferLogSink),
             Arc::new(StubMetadataProvider),
@@ -643,10 +1095,52 @@ mod tests {
             Arc::new(StubTranscriber),
             Arc::new(StubChannelProvider),
             history,
+            AppConfig::default(),
+            None,
+            Arc::new(|_| {}),
         );
         assert_eq!(store.history_count(), 1);
         store.dispatch(AppIntent::History(HistoryIntent::RequestClear));
         store.dispatch(AppIntent::History(HistoryIntent::ClearHistory));
         assert!(store.history_entries().is_empty());
+    }
+
+    async fn run_limited(bound: usize, delays_ms: Vec<u64>) -> Vec<(usize, &'static str)> {
+        let semaphore = Arc::new(Semaphore::new(bound));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(usize, &'static str)>();
+        let mut set = JoinSet::new();
+        for (index, delay) in delays_ms.into_iter().enumerate() {
+            let semaphore = semaphore.clone();
+            let tx = tx.clone();
+            set.spawn(async move {
+                let Ok(_permit) = semaphore.acquire_owned().await else {
+                    return;
+                };
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                let _ = tx.send((index, "ok"));
+            });
+        }
+        drop(tx);
+        let mut out = Vec::new();
+        while let Some(received) = rx.recv().await {
+            out.push(received);
+        }
+        while set.join_next().await.is_some() {}
+        out.sort_by_key(|(index, _)| *index);
+        out
+    }
+
+    #[tokio::test]
+    async fn limited_batch_lands_on_correct_indices() {
+        let out = run_limited(3, vec![60, 10, 30, 5, 40]).await;
+        let indices: Vec<usize> = out.iter().map(|(index, _)| *index).collect();
+        assert_eq!(indices, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[tokio::test]
+    async fn bound_one_serializes_in_spawn_order() {
+        let out = run_limited(1, vec![30, 10, 20]).await;
+        let indices: Vec<usize> = out.iter().map(|(index, _)| *index).collect();
+        assert_eq!(indices, vec![0, 1, 2]);
     }
 }

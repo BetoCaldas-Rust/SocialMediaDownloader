@@ -1,3 +1,5 @@
+#[cfg(windows)]
+pub mod autostart;
 pub mod json_history;
 pub mod locale;
 pub mod log_buffer;

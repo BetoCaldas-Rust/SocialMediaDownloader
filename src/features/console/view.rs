@@ -16,13 +16,14 @@ fn level_color(level: LogLevel) -> Color32 {
     }
 }
 
-pub fn render(ui: &mut Ui, _store: &mut Store) {
+pub fn render(ui: &mut Ui, store: &mut Store) {
     ui.heading(t("console_title"));
     ui.label(t("console_subtitle"));
     ui.separator();
+    let threshold = store.state().settings.log_level;
     let entries = log_entries();
     ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-        for entry in &entries {
+        for entry in entries.iter().filter(|entry| threshold.allows(entry.level)) {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 ui.label(
