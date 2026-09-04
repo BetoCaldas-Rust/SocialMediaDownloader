@@ -8,7 +8,9 @@ use crate::features::shared::sidebar;
 use crate::features::{channel, console, history, settings, transcript, video};
 use crate::services::locale::LocaleService;
 use crate::services::log_sink::BufferLogSink;
-use crate::services::yt_dlp::{YtDlpDownloader, YtDlpMetadataProvider, YtDlpTranscriber};
+use crate::services::yt_dlp::{
+    YtDlpChannelProvider, YtDlpDownloader, YtDlpMetadataProvider, YtDlpTranscriber,
+};
 use crate::ui::theme::{apply_custom_theme, configure_fonts};
 
 pub struct SmdApp {
@@ -25,7 +27,8 @@ impl SmdApp {
             log_sink.clone(),
             Arc::new(YtDlpMetadataProvider::new(log_sink.clone())),
             Arc::new(YtDlpDownloader::new(log_sink.clone())),
-            Arc::new(YtDlpTranscriber::new(log_sink)),
+            Arc::new(YtDlpTranscriber::new(log_sink.clone())),
+            Arc::new(YtDlpChannelProvider::new(log_sink)),
         );
         tracing::info!(target: "startup", "ui ready");
         Self { store }

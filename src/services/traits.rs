@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use chrono::NaiveDate;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::services::log_buffer::LogLevel;
@@ -145,16 +146,58 @@ pub struct TranscriptResult {
     pub size_bytes: u64,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VideoKind {
+    #[default]
+    Video,
+    Short,
+    Live,
+}
+
+impl VideoKind {
+    pub fn locale_key(self) -> &'static str {
+        match self {
+            VideoKind::Video => "channel_kind_video",
+            VideoKind::Short => "channel_kind_shorts",
+            VideoKind::Live => "channel_kind_live",
+        }
+    }
+
+    pub fn ordered() -> [VideoKind; 3] {
+        [VideoKind::Video, VideoKind::Short, VideoKind::Live]
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ChannelOrder {
     pub url: String,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+    pub kinds: Vec<VideoKind>,
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelVideo {
+    pub id: String,
+    pub title: String,
+    pub date_label: String,
+    pub duration_secs: u64,
+    pub url: String,
+    pub kind: VideoKind,
+}
+
 #[derive(Debug, Clone, Default)]
-pub struct ChannelSummary {
+pub struct ChannelPreview {
     pub name: String,
+    pub handle: Option<String>,
+    pub subs: Option<String>,
+    pub videos: Vec<ChannelVideo>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BatchItem {
+    pub url: String,
+    pub title: String,
 }
 
 #[async_trait::async_trait]
@@ -176,10 +219,9 @@ pub trait Transcriber: Send + Sync {
     async fn transcribe(&self, order: &TranscriptOrder) -> Result<TranscriptResult, String>;
 }
 
-#[allow(dead_code)]
 #[async_trait::async_trait]
 pub trait ChannelProvider: Send + Sync {
-    async fn describe(&self, order: ChannelOrder) -> Result<ChannelSummary, String>;
+    async fn preview(&self, order: &ChannelOrder) -> Result<ChannelPreview, String>;
 }
 
 #[allow(dead_code)]

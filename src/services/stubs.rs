@@ -1,12 +1,10 @@
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::traits::{
-    ChannelOrder, ChannelProvider, ChannelSummary, DownloadOrder, DownloadProgress, DownloadTicket,
+    ChannelOrder, ChannelPreview, ChannelProvider, DownloadOrder, DownloadProgress, DownloadTicket,
     Downloader, HistoryStore, MetadataProvider, Transcriber, TranscriptOrder, TranscriptResult,
     VideoMetadata,
 };
-
-const PENDING: &str = "not implemented yet (F2+)";
 
 #[allow(dead_code)]
 pub struct StubMetadataProvider;
@@ -26,7 +24,7 @@ pub struct StubHistoryStore;
 #[async_trait::async_trait]
 impl MetadataProvider for StubMetadataProvider {
     async fn fetch_metadata(&self, _url: &str) -> Result<VideoMetadata, String> {
-        Err(PENDING.to_string())
+        Err("not implemented yet (F2+)".to_string())
     }
 }
 
@@ -37,7 +35,7 @@ impl Downloader for StubDownloader {
         _order: DownloadOrder,
         _progress: UnboundedSender<DownloadProgress>,
     ) -> Result<DownloadTicket, String> {
-        Err(PENDING.to_string())
+        Err("not implemented yet (F2+)".to_string())
     }
 }
 
@@ -50,8 +48,8 @@ impl Transcriber for StubTranscriber {
 
 #[async_trait::async_trait]
 impl ChannelProvider for StubChannelProvider {
-    async fn describe(&self, _order: ChannelOrder) -> Result<ChannelSummary, String> {
-        Err(PENDING.to_string())
+    async fn preview(&self, _order: &ChannelOrder) -> Result<ChannelPreview, String> {
+        Err("channel_error_fetch".to_string())
     }
 }
 

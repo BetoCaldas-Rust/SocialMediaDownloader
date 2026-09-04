@@ -1,7 +1,7 @@
-use super::state::Screen;
+use super::state::{ChannelInclude, DatePreset, Screen};
 use crate::services::traits::{
-    Container, DownloadProgress, DownloadTicket, TranscriptFormat, TranscriptResult, VideoMetadata,
-    VideoQuality,
+    ChannelPreview, Container, DownloadProgress, DownloadTicket, TranscriptFormat,
+    TranscriptResult, VideoKind, VideoMetadata, VideoQuality,
 };
 
 #[derive(Debug, Clone)]
@@ -35,10 +35,33 @@ pub enum TranscriptIntent {
     RevealRecent(usize),
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ChannelIntent {
     SetInput(String),
+    SetPreset(DatePreset),
+    SetFromText(String),
+    SetToText(String),
+    ToggleKind(VideoKind),
+    ToggleInclude(ChannelInclude),
+    ToggleSelect(usize),
+    SelectAll,
+    SelectNone,
+    SetQuality(VideoQuality),
+    FetchPreview,
+    PreviewReceived(Result<ChannelPreview, String>),
+    DownloadBatch,
+    BatchTick {
+        index: usize,
+        tick: DownloadProgress,
+    },
+    BatchItemFinished {
+        index: usize,
+        video_result: Option<Result<DownloadTicket, String>>,
+        transcript_result: Option<Result<TranscriptResult, String>>,
+    },
+    CancelBatch,
+    Retry,
+    Dismiss,
 }
 
 #[allow(dead_code)]
@@ -64,7 +87,6 @@ pub enum AppIntent {
     Navigate(Screen),
     Video(VideoIntent),
     Transcript(TranscriptIntent),
-    #[allow(dead_code)]
     Channel(ChannelIntent),
     #[allow(dead_code)]
     History(HistoryIntent),

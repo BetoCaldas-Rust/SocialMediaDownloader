@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::services::log_buffer::LogLevel;
-use crate::services::traits::{TranscriptOrder, VideoQuality};
+use crate::services::traits::{BatchItem, ChannelOrder, TranscriptOrder, VideoQuality};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -22,6 +22,17 @@ pub enum Effect {
     CancelTranscript,
     FetchTranscript {
         order: TranscriptOrder,
+    },
+    FetchChannelPreview {
+        order: ChannelOrder,
+    },
+    CancelChannel,
+    DownloadBatch {
+        items: Vec<BatchItem>,
+        include_video: bool,
+        include_transcript: bool,
+        quality: VideoQuality,
+        transcript: TranscriptOrder,
     },
     RevealInFolder(PathBuf),
 }
