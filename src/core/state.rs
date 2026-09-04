@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+
+use crate::services::traits::{Container, VideoMetadata, VideoQuality};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Screen {
     #[default]
@@ -33,10 +37,33 @@ impl Screen {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VideoStatus {
+    #[default]
+    Idle,
+    Resolving,
+    Ready,
+    Downloading,
+    Completed,
+    Failed,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct VideoState {
     pub url: String,
+    pub status: VideoStatus,
+    pub metadata: Option<VideoMetadata>,
+    /// 0.0 - 100.0 download progress.
+    pub progress: f32,
+    pub speed: Option<String>,
+    pub eta: Option<String>,
+    pub filename: Option<String>,
+    pub output_path: Option<PathBuf>,
+    pub quality: VideoQuality,
+    pub container: Container,
+    pub include_transcript: bool,
+    /// Locale key for the failure message; the view translates it.
+    pub error_key: Option<String>,
 }
 
 #[allow(dead_code)]

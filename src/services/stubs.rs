@@ -1,20 +1,26 @@
-#![allow(dead_code)]
+use tokio::sync::mpsc::UnboundedSender;
 
 use super::traits::{
-    ChannelOrder, ChannelProvider, ChannelSummary, DownloadOrder, DownloadTicket, Downloader,
-    HistoryStore, MetadataProvider, Transcriber, TranscriptDraft, TranscriptOrder, VideoMetadata,
+    ChannelOrder, ChannelProvider, ChannelSummary, DownloadOrder, DownloadProgress, DownloadTicket,
+    Downloader, HistoryStore, MetadataProvider, Transcriber, TranscriptDraft, TranscriptOrder,
+    VideoMetadata,
 };
 
 const PENDING: &str = "not implemented yet (F2+)";
 
+#[allow(dead_code)]
 pub struct StubMetadataProvider;
 
+#[allow(dead_code)]
 pub struct StubDownloader;
 
+#[allow(dead_code)]
 pub struct StubTranscriber;
 
+#[allow(dead_code)]
 pub struct StubChannelProvider;
 
+#[allow(dead_code)]
 pub struct StubHistoryStore;
 
 #[async_trait::async_trait]
@@ -26,7 +32,11 @@ impl MetadataProvider for StubMetadataProvider {
 
 #[async_trait::async_trait]
 impl Downloader for StubDownloader {
-    async fn download(&self, _order: DownloadOrder) -> Result<DownloadTicket, String> {
+    async fn download(
+        &self,
+        _order: DownloadOrder,
+        _progress: UnboundedSender<DownloadProgress>,
+    ) -> Result<DownloadTicket, String> {
         Err(PENDING.to_string())
     }
 }

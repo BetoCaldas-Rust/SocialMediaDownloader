@@ -8,6 +8,7 @@ use crate::features::shared::sidebar;
 use crate::features::{channel, console, history, settings, transcript, video};
 use crate::services::locale::LocaleService;
 use crate::services::log_sink::BufferLogSink;
+use crate::services::yt_dlp::{YtDlpDownloader, YtDlpMetadataProvider};
 use crate::ui::theme::{apply_custom_theme, configure_fonts};
 
 pub struct SmdApp {
@@ -18,7 +19,13 @@ impl SmdApp {
     pub fn new(creation: &eframe::CreationContext<'_>) -> Self {
         apply_custom_theme(&creation.egui_ctx);
         configure_fonts(&creation.egui_ctx);
-        let store = Store::new(Arc::new(LocaleService), Arc::new(BufferLogSink));
+        let log_sink = Arc::new(BufferLogSink);
+        let store = Store::new(
+            Arc::new(LocaleService),
+            log_sink.clone(),
+            Arc::new(YtDlpMetadataProvider::new(log_sink.clone())),
+            Arc::new(YtDlpDownloader::new(log_sink)),
+        );
         tracing::info!(target: "startup", "ui ready");
         Self { store }
     }
@@ -38,6 +45,10 @@ impl SmdApp {
 
 impl eframe::App for SmdApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.store.drain_pending();
+        if self.store.is_busy() {
+            ctx.request_repaint();
+        }
         egui::SidePanel::left("sidebar")
             .resizable(false)
             .default_width(220.0)
