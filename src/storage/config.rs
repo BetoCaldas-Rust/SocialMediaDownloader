@@ -4,6 +4,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 use crate::services::log_buffer::LogLevel;
+use crate::services::platform::platform_folder;
 use crate::services::traits::{TranscriptFormat, VideoQuality};
 use crate::services::yt_dlp::downloader::default_download_dir;
 
@@ -100,7 +101,7 @@ pub struct AppConfig {
     pub locale: String,
     pub download_dir: Option<PathBuf>,
     pub quality_default: VideoQuality,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub organize_by_channel: bool,
     #[serde(default = "default_simultaneous")]
     pub simultaneous: u8,
@@ -128,7 +129,7 @@ impl Default for AppConfig {
             locale: default_locale(),
             download_dir: None,
             quality_default: VideoQuality::default(),
-            organize_by_channel: true,
+            organize_by_channel: false,
             simultaneous: default_simultaneous(),
             transcript_lang: default_transcript_lang(),
             transcript_format: TranscriptFormat::default(),
@@ -210,15 +211,18 @@ pub fn resolve_download_dir(config: &AppConfig) -> PathBuf {
         .unwrap_or_else(default_download_dir)
 }
 
-pub fn resolve_output_dir(config: &AppConfig, channel: Option<&str>) -> PathBuf {
-    let base = resolve_download_dir(config);
-    if !config.organize_by_channel {
-        return base;
+pub fn resolve_output_dir(
+    config: &AppConfig,
+    uploader: Option<&str>,
+    url: &str,
+) -> PathBuf {
+    let mut dir = resolve_download_dir(config).join(platform_folder(url));
+    if config.organize_by_channel {
+        if let Some(name) = uploader.map(str::trim).filter(|name| !name.is_empty()) {
+            dir = dir.join(sanitize_dirname(name));
+        }
     }
-    let Some(name) = channel.map(str::trim).filter(|name| !name.is_empty()) else {
-        return base;
-    };
-    base.join(sanitize_dirname(name))
+    dir
 }
 
 pub fn sanitize_dirname(name: &str) -> String {
@@ -345,7 +349,7 @@ mod tests {
     #[test]
     fn defaults_match_canvas() {
         let config = AppConfig::default();
-        assert!(config.organize_by_channel);
+        assert!(!config.organize_by_channel);
         assert_eq!(config.simultaneous, 3);
         assert_eq!(config.transcript_lang, "pt");
         assert_eq!(config.transcript_fallback, Some("en".to_string()));
@@ -388,18 +392,22 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            resolve_output_dir(&config, Some("My Channel")),
-            PathBuf::from("/tmp/smd/My Channel")
+            resolve_output_dir(&config, Some("My Channel"), "https://x.com/u/status/1"),
+            PathBuf::from("/tmp/smd/twitter/My Channel")
         );
         let flat = AppConfig {
+            download_dir: Some(PathBuf::from("/tmp/smd")),
             organize_by_channel: false,
             ..Default::default()
         };
         assert_eq!(
-            resolve_output_dir(&flat, Some("My Channel")),
-            resolve_download_dir(&flat)
+            resolve_output_dir(&flat, Some("My Channel"), "https://x.com/u/status/1"),
+            PathBuf::from("/tmp/smd/twitter")
         );
-        assert_eq!(resolve_output_dir(&config, None), PathBuf::from("/tmp/smd"));
+        assert_eq!(
+            resolve_output_dir(&config, None, "https://youtu.be/abc"),
+            PathBuf::from("/tmp/smd/youtube")
+        );
     }
 
     #[test]

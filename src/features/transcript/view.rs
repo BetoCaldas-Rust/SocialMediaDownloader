@@ -200,7 +200,7 @@ fn render_recents(ui: &mut Ui, store: &mut Store, state: &TranscriptState) {
                     .file_name()
                     .and_then(|name| name.to_str())
                     .unwrap_or("?");
-                ui.label(name);
+                ui.label(crate::ui::components::truncate_middle(name, 50));
                 ui.label(format!("[{}]", entry.lang_used));
                 if entry.auto_generated {
                     ui.label(t("transcript_auto_tag"));

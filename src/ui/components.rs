@@ -120,6 +120,25 @@ pub fn search_box(ui: &mut Ui, text: &mut String, hint: String, width: f32) -> b
     field.changed()
 }
 
+pub fn truncate_middle(text: &str, max_chars: usize) -> String {
+    let count = text.chars().count();
+    if count <= max_chars || max_chars < 5 {
+        return text.to_string();
+    }
+    let tail = max_chars / 3;
+    let head = max_chars - tail - 1;
+    let start: String = text.chars().take(head).collect();
+    let end: String = text
+        .chars()
+        .rev()
+        .take(tail)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("{start}…{end}")
+}
+
 pub fn chip(ui: &mut Ui, text: String, bg: egui::Color32, fg: egui::Color32) {
     egui::Frame::none()
         .fill(bg)
@@ -221,4 +240,25 @@ pub fn check_row(
                 );
             });
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_text_passes_through() {
+        assert_eq!(truncate_middle("abc", 10), "abc");
+        assert_eq!(truncate_middle("abcde", 5), "abcde");
+    }
+
+    #[test]
+    fn long_text_keeps_head_and_tail() {
+        let text = "Massimo - Did you know about zinc fireworks [12345].mp4";
+        let out = truncate_middle(text, 30);
+        assert_eq!(out.chars().count(), 30);
+        assert!(out.starts_with("Massimo - Did you k"));
+        assert!(out.ends_with("12345].mp4"));
+        assert!(out.contains('…'));
+    }
 }

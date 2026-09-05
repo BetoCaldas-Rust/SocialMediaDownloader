@@ -235,7 +235,10 @@ fn render_progress(ui: &mut Ui, store: &mut Store, state: &VideoState) {
         }
         ui.horizontal(|ui| {
             crate::ui::components::video_chip(ui, t("video_chip_video"));
-            ui.label(state.filename.as_deref().unwrap_or("…"));
+            ui.label(crate::ui::components::truncate_middle(
+                state.filename.as_deref().unwrap_or("…"),
+                60,
+            ));
         });
         ui.add(
             egui::ProgressBar::new((state.progress / 100.0).clamp(0.0, 1.0))

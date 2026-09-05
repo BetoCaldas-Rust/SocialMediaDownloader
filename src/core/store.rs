@@ -23,6 +23,7 @@ use crate::services::traits::{
     MetadataProvider, Transcriber, TranscriptOrder, VideoQuality,
 };
 use crate::services::yt_dlp::binary::{hidden_command, resolve_binary};
+use crate::services::yt_dlp::downloader::default_download_dir;
 use crate::storage::config::{
     log_file_for, logs_dir, prune_old_logs, resolve_download_dir, resolve_output_dir, AppConfig,
 };
@@ -308,7 +309,7 @@ impl Store {
                 }
                 Effect::FetchTranscript { order } => {
                     let mut adjusted = order.clone();
-                    adjusted.output_dir = resolve_download_dir(&self.config);
+                    adjusted.output_dir = self.transcript_dir(&adjusted.url);
                     self.spawn_transcript(adjusted);
                 }
                 Effect::FetchChannelPreview { order } => self.spawn_channel_preview(order.clone()),
@@ -438,7 +439,7 @@ impl Store {
                 self.state.transcript.status = TranscriptStatus::Resolving;
                 self.state.screen = Screen::Transcript;
                 let mut adjusted = order;
-                adjusted.output_dir = resolve_download_dir(&self.config);
+                adjusted.output_dir = self.transcript_dir(&adjusted.url);
                 self.spawn_transcript(adjusted);
             }
         }
@@ -475,6 +476,19 @@ impl Store {
         }));
     }
 
+    fn transcript_dir(&self, url: &str) -> PathBuf {
+        let channel = if url.trim() == self.state.video.url.trim() {
+            self.state
+                .video
+                .metadata
+                .as_ref()
+                .map(|meta| meta.channel.clone())
+        } else {
+            None
+        };
+        resolve_output_dir(&self.config, channel.as_deref(), url)
+    }
+
     fn spawn_download(&mut self, url: String, quality: crate::services::traits::VideoQuality) {
         let Some(runtime) = self.runtime.clone() else {
             self.dispatch(AppIntent::Video(VideoIntent::DownloadFinished(Err(
@@ -488,7 +502,7 @@ impl Store {
             .metadata
             .as_ref()
             .map(|meta| meta.channel.clone());
-        let output_dir = resolve_output_dir(&self.config, channel.as_deref());
+        let output_dir = resolve_output_dir(&self.config, channel.as_deref(), &url);
         let order = DownloadOrder {
             url,
             quality,
@@ -585,7 +599,12 @@ impl Store {
         } else {
             None
         };
-        let output_dir = resolve_output_dir(&self.config, channel_name.as_deref());
+        let output_dirs: Vec<PathBuf> = items
+            .iter()
+            .map(|item| {
+                resolve_output_dir(&self.config, channel_name.as_deref(), &item.url)
+            })
+            .collect();
         let downloader = self.downloader.clone();
         let transcriber = self.transcriber.clone();
         let intent_tx = self.intent_tx.clone();
@@ -597,12 +616,15 @@ impl Store {
                 let downloader = downloader.clone();
                 let transcriber = transcriber.clone();
                 let intent_tx = intent_tx.clone();
+                let item_dir = output_dirs
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(default_download_dir);
                 let item_transcript = TranscriptOrder {
                     url: item.url.clone(),
-                    output_dir: output_dir.clone(),
+                    output_dir: item_dir.clone(),
                     ..transcript.clone()
                 };
-                let item_dir = output_dir.clone();
                 set.spawn(async move {
                     let Ok(_permit) = semaphore.acquire_owned().await else {
                         return;

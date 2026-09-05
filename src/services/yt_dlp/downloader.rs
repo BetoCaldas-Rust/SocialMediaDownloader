@@ -25,6 +25,54 @@ pub fn format_arg(quality: VideoQuality) -> &'static str {
     }
 }
 
+/// Single-file fallback when no ffmpeg is around to merge tracks.
+/// Merging separate video+audio (e.g. HLS `fhls-*` fragments) silently
+/// leaves orphan parts behind, so without ffmpeg we never ask for
+/// split tracks in the first place.
+pub const SINGLE_FILE_FORMAT: &str = "b[ext=mp4]/b";
+
+pub fn select_format(quality: VideoQuality, merge_ok: bool) -> &'static str {
+    if merge_ok {
+        format_arg(quality)
+    } else {
+        SINGLE_FILE_FORMAT
+    }
+}
+
+fn ffmpeg_name() -> &'static str {
+    if cfg!(windows) {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    }
+}
+
+pub fn ffmpeg_available() -> bool {
+    let name = ffmpeg_name();
+    let mut dirs = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            dirs.push(dir.join("resources").join("bin"));
+            dirs.push(dir.join("bin"));
+            dirs.push(dir.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        dirs.push(cwd.join("resources").join("bin"));
+    }
+    if let Some(base) = directories::BaseDirs::new() {
+        dirs.push(base.data_dir().join("SMD").join("updates"));
+    }
+    if dirs.iter().any(|dir| dir.join(name).is_file()) {
+        return true;
+    }
+    std::env::var_os("PATH")
+        .map(|paths| {
+            std::env::split_paths(&paths).any(|dir| dir.join(name).is_file())
+        })
+        .unwrap_or(false)
+}
+
 /// `~/Downloads/SocialMediaDownloader` until F6 owns the location.
 pub fn default_download_dir() -> PathBuf {
     let base = directories::UserDirs::new()
@@ -60,7 +108,14 @@ impl Downloader for YtDlpDownloader {
         }
         let binary = resolve_binary()?;
         let dir = ensure_dir(&order.output_dir, &*self.log)?;
-        let mut child = spawn_download(&binary, &url, order.quality, &dir, &*self.log)?;
+        let merge = ffmpeg_available();
+        if !merge {
+            self.note(
+                LogLevel::Warn,
+                "ffmpeg not found, using single-file formats (no merge)",
+            );
+        }
+        let mut child = spawn_download(&binary, &url, order.quality, merge, &dir, &*self.log)?;
         let stdout = take_pipe(child.stdout.take(), "stdout")?;
         drain_stderr(child.stderr.take(), self.log.clone());
         let filename = pump_stdout(stdout, &progress).await;
@@ -82,17 +137,21 @@ fn spawn_download(
     binary: &PathBuf,
     url: &str,
     quality: VideoQuality,
+    merge: bool,
     dir: &Path,
     log: &dyn LogSink,
 ) -> Result<tokio::process::Child, String> {
-    hidden_command(binary)
+    let mut command = hidden_command(binary);
+    command
         .arg("--newline")
         .arg("--no-playlist")
         .arg("--no-warnings")
         .arg("-f")
-        .arg(format_arg(quality))
-        .arg("--merge-output-format")
-        .arg("mp4")
+        .arg(select_format(quality, merge));
+    if merge {
+        command.arg("--merge-output-format").arg("mp4");
+    }
+    command
         .arg("-P")
         .arg(dir)
         .arg("-o")
@@ -100,12 +159,11 @@ fn spawn_download(
         .arg(url)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|_| {
-            log.push(LogLevel::Error, "download", "failed to spawn yt-dlp");
-            "video_error_download".to_string()
-        })
+        .kill_on_drop(true);
+    command.spawn().map_err(|_| {
+        log.push(LogLevel::Error, "download", "failed to spawn yt-dlp");
+        "video_error_download".to_string()
+    })
 }
 
 fn ensure_dir(dir: &Path, log: &dyn LogSink) -> Result<PathBuf, String> {
@@ -173,5 +231,35 @@ fn ticket_for(dir: &Path, filename: Option<String>) -> DownloadTicket {
             id: "download".to_string(),
             path: dir.to_path_buf(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_uses_quality_mapping() {
+        assert_eq!(select_format(VideoQuality::Best, true), "bv*+ba/b");
+        assert_eq!(
+            select_format(VideoQuality::Capped720, true),
+            "bv*[height<=720]+ba/b[height<=720]/b[height<=720]/b"
+        );
+    }
+
+    #[test]
+    fn no_ffmpeg_falls_back_to_single_file() {
+        for quality in [
+            VideoQuality::Best,
+            VideoQuality::Capped1080,
+            VideoQuality::Capped720,
+        ] {
+            assert_eq!(select_format(quality, false), SINGLE_FILE_FORMAT);
+        }
+    }
+
+    #[test]
+    fn ffmpeg_probe_returns_a_bool() {
+        let _ = ffmpeg_available();
     }
 }

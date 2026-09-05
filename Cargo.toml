@@ -30,7 +30,7 @@ version = "2.0.0"
 authors = ["Beto Caldas"]
 publisher = "Beto Caldas"
 description = "Baixe vídeos de diversas redes sociais."
-icons = ["icons/icon.png"]
+icons = ["icons/icon.ico", "icons/icon.png"]
 out-dir = "dist"
 resources = ["locales/", "resources/bin/"]
 

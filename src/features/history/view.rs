@@ -121,7 +121,7 @@ fn render_row(ui: &mut Ui, store: &mut Store, entry: &HistoryEntry, now_ms: i64)
             EntryKind::Transcript => "📄",
         });
         ui.vertical(|ui| {
-            ui.label(entry.name.clone());
+            ui.label(crate::ui::components::truncate_middle(&entry.name, 60));
             if let Some(error) = &entry.error {
                 ui.colored_label(LOG_ERROR, display_error(error));
             }

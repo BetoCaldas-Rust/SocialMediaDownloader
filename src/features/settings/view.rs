@@ -59,7 +59,7 @@ fn row(ui: &mut Ui, title_key: &str, desc_key: &str, control: impl FnOnce(&mut U
         ui.vertical(|ui| {
             ui.label(
                 RichText::new(t(title_key))
-                    .strong()
+                    .size(14.0)
                     .color(crate::ui::theme::TEXT_PRIMARY),
             );
             ui.label(RichText::new(t(desc_key)).small().weak());
@@ -362,6 +362,13 @@ fn render_system(ui: &mut Ui, store: &mut Store) {
         "settings_group_system",
         "settings_group_system_desc",
         |ui| {
+            row(ui, "settings_version_title", "settings_version_desc", |ui| {
+                ui.label(
+                    RichText::new(env!("CARGO_PKG_VERSION"))
+                        .monospace()
+                        .strong(),
+                );
+            });
             row(
                 ui,
                 "settings_loglevel_title",
@@ -415,7 +422,10 @@ fn render_system(ui: &mut Ui, store: &mut Store) {
                 ui.colored_label(egui::Color32::LIGHT_RED, t(key));
             }
             ui.horizontal(|ui| {
-                ui.label(RichText::new(t("settings_sidecar_title")).strong());
+                ui.label(
+                    RichText::new(t("settings_sidecar_title"))
+                        .color(crate::ui::theme::TEXT_PRIMARY),
+                );
                 match resolve_binary() {
                     Ok(path) => {
                         ui.label(

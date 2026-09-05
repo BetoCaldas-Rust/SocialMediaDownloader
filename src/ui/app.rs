@@ -17,7 +17,7 @@ use crate::services::yt_dlp::{
     YtDlpChannelProvider, YtDlpDownloader, YtDlpMetadataProvider, YtDlpTranscriber,
 };
 use crate::storage::config::AppConfig;
-use crate::ui::components::body_margin;
+use crate::ui::components::{body_margin, truncate_middle};
 use crate::ui::theme::{apply_custom_theme, configure_fonts, SIDEBAR_BG};
 
 pub struct SmdApp {
@@ -85,7 +85,8 @@ impl SmdApp {
         for notice in &notices {
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(format!("{}: {}", t(&notice.message_key), notice.detail));
+                    let detail = truncate_middle(&notice.detail, 80);
+                    ui.label(format!("{}: {}", t(&notice.message_key), detail));
                     if ui.button(t("notice_dismiss")).clicked() {
                         self.store
                             .dispatch(AppIntent::DismissNotice(notice.id.clone()));

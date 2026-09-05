@@ -278,7 +278,7 @@ fn render_table(ui: &mut Ui, store: &mut Store, state: &ChannelState, preview: &
                                 .small(),
                         );
                         ui.vertical(|ui| {
-                            ui.label(video.title.clone());
+                            ui.label(crate::ui::components::truncate_middle(&video.title, 70));
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{} · {}",
@@ -365,7 +365,7 @@ fn render_batch(ui: &mut Ui, state: &ChannelState) {
             ui.horizontal(|ui| {
                 ui.label(batch_marker(item.status));
                 ui.vertical(|ui| {
-                    ui.label(item.title.clone());
+                    ui.label(crate::ui::components::truncate_middle(&item.title, 70));
                     ui.add(
                         egui::ProgressBar::new((item.progress / 100.0).clamp(0.0, 1.0))
                             .show_percentage(),
