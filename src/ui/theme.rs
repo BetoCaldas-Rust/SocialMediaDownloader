@@ -57,8 +57,12 @@ pub fn apply_custom_theme(ctx: &egui::Context) {
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.5_f32, ACCENT_LIGHT);
     visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(50, 50, 50);
 
+    // NOTE: widgets.active.fg_stroke doubles as the color for ALL
+    // `.strong()` text without explicit color (Visuals::strong_text_color
+    // reads it), so it must stay light; pressed buttons keep dark text
+    // via explicit RichText colors (see full_primary).
     visuals.widgets.active.bg_fill = ACCENT_DARK;
-    visuals.widgets.active.fg_stroke = Stroke::new(2.0_f32, BG_DARK);
+    visuals.widgets.active.fg_stroke = Stroke::new(2.0_f32, TEXT_PRIMARY);
     visuals.widgets.active.weak_bg_fill = ACCENT_DARK;
 
     visuals.selection.bg_fill = ACCENT_PRIMARY.linear_multiply(0.3);

@@ -7,6 +7,7 @@ use crate::i18n::registry::t;
 use crate::services::traits::{TranscriptFormat, VideoQuality};
 use crate::services::yt_dlp::binary::resolve_binary;
 use crate::storage::config::{logs_dir, LogLevelSetting};
+use crate::ui::theme::TEXT_PRIMARY;
 use crate::ui::components::{card, page_header};
 use crate::ui::theme::ACCENT_PRIMARY;
 
@@ -270,7 +271,7 @@ fn render_app(ui: &mut Ui, store: &mut Store) {
     group(ui, "settings_group_app", "settings_group_app_desc", |ui| {
         row(ui, "settings_hotkey_title", "settings_hotkey_desc", |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Win+Shift+X").monospace().strong());
+                ui.label(RichText::new("Win+Shift+X").monospace().strong().color(TEXT_PRIMARY));
                 ui.label(RichText::new(t("settings_hotkey_note")).small().weak());
             });
         });
@@ -366,7 +367,8 @@ fn render_system(ui: &mut Ui, store: &mut Store) {
                 ui.label(
                     RichText::new(env!("CARGO_PKG_VERSION"))
                         .monospace()
-                        .strong(),
+                        .strong()
+                        .color(TEXT_PRIMARY),
                 );
             });
             row(
