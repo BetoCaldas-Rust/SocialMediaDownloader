@@ -10,7 +10,7 @@ use crate::services::traits::{EntryKind, HistoryEntry};
 use crate::services::yt_dlp::transcript::{
     parse_no_transcript_error, transcript_error_display_key,
 };
-use crate::ui::components::{card, input_black, page_header};
+use crate::ui::components::{card, page_header, search_box};
 use crate::ui::theme::{ACCENT_PRIMARY, LOG_ERROR, TEXT_SECONDARY};
 
 pub fn render(ui: &mut Ui, store: &mut Store) {
@@ -57,8 +57,7 @@ fn render_toolbar(ui: &mut Ui, store: &mut Store, state: &HistoryState, entries:
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let mut query = state.query.clone();
-        let field = input_black(ui, &mut query, t("history_search_hint"));
-        if field.changed() {
+        if search_box(ui, &mut query, t("history_search_hint"), 260.0) {
             dispatch(store, HistoryIntent::SetQuery(query));
         }
         let mut sort = state.sort;

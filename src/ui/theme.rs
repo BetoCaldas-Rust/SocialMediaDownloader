@@ -66,10 +66,36 @@ pub fn apply_custom_theme(ctx: &egui::Context) {
 
     visuals.hyperlink_color = ACCENT_PRIMARY;
 
+    visuals.override_text_color = Some(TEXT_PRIMARY);
+
     visuals.widgets.noninteractive.rounding = Rounding::same(4.0);
     visuals.widgets.inactive.rounding = Rounding::same(4.0);
     visuals.widgets.hovered.rounding = Rounding::same(4.0);
     visuals.widgets.active.rounding = Rounding::same(4.0);
 
     ctx.set_visuals(visuals);
+
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.insert(
+        egui::TextStyle::Heading,
+        egui::FontId::proportional(24.0),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Body,
+        egui::FontId::proportional(15.0),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Button,
+        egui::FontId::proportional(15.0),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Small,
+        egui::FontId::proportional(12.0),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Monospace,
+        egui::FontId::proportional(14.0),
+    );
+    style.spacing.item_spacing = egui::Vec2::new(8.0, 8.0);
+    ctx.set_style(style);
 }

@@ -9,7 +9,7 @@ use crate::services::yt_dlp::transcript::{
     parse_no_transcript_error, transcript_error_display_key,
 };
 use crate::ui::components::{
-    card, field_label, full_primary, input_black, micro_label, page_header, section_title,
+    card, field_label, full_primary, input_row, micro_label, page_header, section_title,
 };
 use crate::ui::theme::{LOG_ERROR, TEXT_SECONDARY};
 
@@ -38,23 +38,21 @@ fn dispatch(store: &mut Store, intent: TranscriptIntent) {
 fn render_url_card(ui: &mut Ui, store: &mut Store, state: &TranscriptState) {
     card(ui, |ui| {
         field_label(ui, t("transcript_url_label"));
-        ui.horizontal(|ui| {
-            let mut input = state.input.clone();
-            let field = input_black(ui, &mut input, t("transcript_url_hint"));
-            if field.changed() {
-                dispatch(store, TranscriptIntent::SetInput(input));
-            }
-            let busy = state.status.is_busy();
-            let label = if busy {
-                t("transcript_fetching")
-            } else {
-                t("transcript_fetch_button")
-            };
-            let ready = !busy && !state.input.trim().is_empty();
-            if ui.add_enabled(ready, egui::Button::new(label)).clicked() {
-                dispatch(store, TranscriptIntent::FetchTranscript);
-            }
-        });
+        let mut input = state.input.clone();
+        let busy = state.status.is_busy();
+        let label = if busy {
+            t("transcript_fetching")
+        } else {
+            t("transcript_fetch_button")
+        };
+        let ready = !busy && !state.input.trim().is_empty();
+        let (changed, clicked) = input_row(ui, &mut input, t("transcript_url_hint"), label, ready);
+        if changed {
+            dispatch(store, TranscriptIntent::SetInput(input));
+        }
+        if clicked {
+            dispatch(store, TranscriptIntent::FetchTranscript);
+        }
     });
 }
 

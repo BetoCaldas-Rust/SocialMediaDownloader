@@ -57,7 +57,11 @@ fn group(ui: &mut Ui, title_key: &str, desc_key: &str, body: impl FnOnce(&mut Ui
 fn row(ui: &mut Ui, title_key: &str, desc_key: &str, control: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new(t(title_key)).strong());
+            ui.label(
+                RichText::new(t(title_key))
+                    .strong()
+                    .color(crate::ui::theme::TEXT_PRIMARY),
+            );
             ui.label(RichText::new(t(desc_key)).small().weak());
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

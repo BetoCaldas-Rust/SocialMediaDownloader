@@ -9,7 +9,7 @@ use crate::features::channel::model::{format_duration, selected_count, total_dur
 use crate::i18n::registry::t;
 use crate::services::traits::{ChannelPreview, VideoKind, VideoQuality};
 use crate::ui::components::{
-    card, field_label, full_primary, input_black, micro_label, page_header, section_title,
+    card, field_label, full_primary, input_row, micro_label, page_header, section_title,
 };
 use crate::ui::theme::{ACCENT_PRIMARY, LOG_ERROR, TEXT_SECONDARY};
 
@@ -38,23 +38,21 @@ fn dispatch(store: &mut Store, intent: ChannelIntent) {
 fn render_input_card(ui: &mut Ui, store: &mut Store, state: &ChannelState) {
     card(ui, |ui| {
         field_label(ui, t("channel_input_label"));
-        ui.horizontal(|ui| {
-            let mut input = state.input.clone();
-            let field = input_black(ui, &mut input, t("channel_input_hint"));
-            if field.changed() {
-                dispatch(store, ChannelIntent::SetInput(input));
-            }
-            let loading = state.status == ChannelStatus::Loading;
-            let label = if loading {
-                t("channel_fetching")
-            } else {
-                t("channel_fetch_button")
-            };
-            let ready = !state.status.is_busy() && !state.input.trim().is_empty();
-            if ui.add_enabled(ready, egui::Button::new(label)).clicked() {
-                dispatch(store, ChannelIntent::FetchPreview);
-            }
-        });
+        let mut input = state.input.clone();
+        let loading = state.status == ChannelStatus::Loading;
+        let label = if loading {
+            t("channel_fetching")
+        } else {
+            t("channel_fetch_button")
+        };
+        let ready = !state.status.is_busy() && !state.input.trim().is_empty();
+        let (changed, clicked) = input_row(ui, &mut input, t("channel_input_hint"), label, ready);
+        if changed {
+            dispatch(store, ChannelIntent::SetInput(input));
+        }
+        if clicked {
+            dispatch(store, ChannelIntent::FetchPreview);
+        }
     });
 }
 

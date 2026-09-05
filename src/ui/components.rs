@@ -1,6 +1,8 @@
 use egui::{Button, Frame, InnerResponse, Margin, Response, RichText, Ui};
 
-use super::theme::{ACCENT_PRIMARY, BG_DARK, BG_SECONDARY, TEXT_ON_ACCENT, TEXT_SECONDARY};
+use super::theme::{
+    ACCENT_PRIMARY, BG_DARK, BG_SECONDARY, TEXT_ON_ACCENT, TEXT_PRIMARY, TEXT_SECONDARY,
+};
 use crate::i18n::registry::t;
 
 pub fn body_margin() -> Margin {
@@ -13,7 +15,12 @@ pub fn body_margin() -> Margin {
 }
 
 pub fn page_header(ui: &mut Ui, title_key: &str, subtitle_key: &str) {
-    ui.label(RichText::new(t(title_key)).size(22.0).strong());
+    ui.label(
+        RichText::new(t(title_key))
+            .size(22.0)
+            .strong()
+            .color(TEXT_PRIMARY),
+    );
     ui.label(RichText::new(t(subtitle_key)).size(13.0).color(TEXT_SECONDARY));
     ui.add_space(14.0);
 }
@@ -44,7 +51,7 @@ pub fn card<R>(
 }
 
 pub fn field_label(ui: &mut Ui, text: String) {
-    ui.label(RichText::new(text).size(14.0));
+    ui.label(RichText::new(text).size(14.0).color(TEXT_PRIMARY));
     ui.add_space(4.0);
 }
 
@@ -71,13 +78,46 @@ pub fn full_primary(ui: &mut Ui, text: String) -> Response {
     )
 }
 
-pub fn input_black(ui: &mut Ui, text: &mut String, hint: String) -> egui::Response {
+pub fn input_row(
+    ui: &mut Ui,
+    text: &mut String,
+    hint: String,
+    action_label: String,
+    action_enabled: bool,
+) -> (bool, bool) {
+    let mut changed = false;
+    let mut clicked = false;
+    ui.horizontal(|ui| {
+        let input_width = (ui.available_width() - 140.0).max(80.0);
+        ui.style_mut().visuals.extreme_bg_color = BG_DARK;
+        let field = ui.add(
+            egui::TextEdit::singleline(text)
+                .hint_text(RichText::new(hint).color(TEXT_SECONDARY))
+                .desired_width(input_width),
+        );
+        if field.changed() {
+            changed = true;
+        }
+        ui.add_enabled_ui(action_enabled, |ui| {
+            if ui
+                .add_sized([132.0, 28.0], egui::Button::new(action_label))
+                .clicked()
+            {
+                clicked = true;
+            }
+        });
+    });
+    (changed, clicked)
+}
+
+pub fn search_box(ui: &mut Ui, text: &mut String, hint: String, width: f32) -> bool {
     ui.style_mut().visuals.extreme_bg_color = BG_DARK;
-    ui.add(
+    let field = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(RichText::new(hint).color(TEXT_SECONDARY))
-            .desired_width(f32::INFINITY),
-    )
+            .desired_width(width),
+    );
+    field.changed()
 }
 
 pub fn chip(ui: &mut Ui, text: String, bg: egui::Color32, fg: egui::Color32) {
@@ -138,14 +178,15 @@ pub fn check_row(
         .inner_margin(Margin::symmetric(10.0_f32, 8.0_f32))
         .show(ui, |ui| {
             ui.add_enabled_ui(enabled, |ui| {
-                let size = egui::Vec2::new(ui.available_width(), 20.0);
+                let size = egui::Vec2::new(ui.available_width(), 44.0);
                 let (rect, response) =
                     ui.allocate_exact_size(size, egui::Sense::click());
                 if response.clicked() {
                     on_toggle();
                 }
+                let box_top = rect.min.y + 6.0;
                 let box_rect = egui::Rect::from_min_size(
-                    egui::Pos2::new(rect.min.x, rect.center().y - 8.0),
+                    egui::Pos2::new(rect.min.x, box_top),
                     egui::Vec2::new(16.0, 16.0),
                 );
                 let box_fill = if selected {
@@ -165,14 +206,14 @@ pub fn check_row(
                 }
                 let text_x = box_rect.max.x + 8.0;
                 ui.painter().text(
-                    egui::Pos2::new(text_x, rect.center().y - 8.0),
+                    egui::Pos2::new(text_x, rect.min.y + 4.0),
                     egui::Align2::LEFT_TOP,
                     title,
                     egui::FontId::proportional(13.0),
                     super::theme::TEXT_PRIMARY,
                 );
                 ui.painter().text(
-                    egui::Pos2::new(text_x, rect.center().y + 2.0),
+                    egui::Pos2::new(text_x, rect.min.y + 22.0),
                     egui::Align2::LEFT_TOP,
                     desc,
                     egui::FontId::proportional(11.0),

@@ -6,7 +6,7 @@ use crate::core::store::Store;
 use crate::i18n::registry::t;
 use crate::services::traits::{Container, VideoQuality};
 use crate::ui::components::{
-    card, check_row, field_label, full_primary, input_black, micro_label, page_header,
+    card, check_row, field_label, full_primary, input_row, micro_label, page_header,
     section_title,
 };
 use crate::ui::theme::TEXT_SECONDARY;
@@ -36,23 +36,21 @@ fn dispatch(store: &mut Store, intent: VideoIntent) {
 fn render_url_card(ui: &mut Ui, store: &mut Store, state: &VideoState) {
     card(ui, |ui| {
         field_label(ui, t("video_url_label"));
-        ui.horizontal(|ui| {
-            let mut url = state.url.clone();
-            let field = input_black(ui, &mut url, t("video_url_hint"));
-            if field.changed() {
-                dispatch(store, VideoIntent::SetUrl(url));
-            }
-            let resolving = state.status == VideoStatus::Resolving;
-            let label = if resolving {
-                t("video_fetching")
-            } else {
-                t("video_fetch_button")
-            };
-            let ready = !resolving && !state.url.trim().is_empty();
-            if ui.add_enabled(ready, egui::Button::new(label)).clicked() {
-                dispatch(store, VideoIntent::FetchMetadata);
-            }
-        });
+        let mut url = state.url.clone();
+        let resolving = state.status == VideoStatus::Resolving;
+        let label = if resolving {
+            t("video_fetching")
+        } else {
+            t("video_fetch_button")
+        };
+        let ready = !resolving && !state.url.trim().is_empty();
+        let (changed, clicked) = input_row(ui, &mut url, t("video_url_hint"), label, ready);
+        if changed {
+            dispatch(store, VideoIntent::SetUrl(url));
+        }
+        if clicked {
+            dispatch(store, VideoIntent::FetchMetadata);
+        }
     });
 }
 
